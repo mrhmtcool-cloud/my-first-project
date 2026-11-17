@@ -1,0 +1,89 @@
+# Build Android (APK + AAB) — runs on GitHub's cloud, no laptop needed!
+#
+# How to use:
+#   1. Push this repo to GitHub → this workflow runs automatically on every push
+#   2. Or run manually: Actions tab → "Build Android" → Run workflow
+#      (optional: enter your backend API URL)
+#   3. Download the artifacts when green:
+#        · app-bundle-play-store  → .aab  (upload this to Play Console)
+#        · apk-direct-install     → .apk  (share on WhatsApp / install directly)
+name: Build Android (APK + AAB)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      api_base:
+        description: "Backend API URL (https://... — leave empty to use the one in api_client.dart)"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Prepare project (launcher icons, android/ scaffold, signing, manifest)
+        working-directory: mobile
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          flutter pub get
+          dart run flutter_launcher_icons || true
+          flutter create . --platforms android --org in.laborsnearme --project-name labors_near_me
+          python3 scripts/setup_android.py
+
+      - name: Build APK (split per ABI — small downloads)
+        working-directory: mobile
+        env:
+          API_BASE: ${{ inputs.api_base || vars.API_BASE || '' }}
+        run: |
+          if [ -n "$API_BASE" ]; then
+            flutter build apk --release --split-per-abi --dart-define=API_BASE="$API_BASE"
+          else
+            flutter build apk --release --split-per-abi
+          fi
+
+      - name: Build App Bundle (AAB — for Play Store upload)
+        working-directory: mobile
+        env:
+          API_BASE: ${{ inputs.api_base || vars.API_BASE || '' }}
+        run: |
+          if [ -n "$API_BASE" ]; then
+            flutter build appbundle --release --dart-define=API_BASE="$API_BASE"
+          else
+            flutter build appbundle --release
+          fi
+
+      - name: Upload AAB (Play Store artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-bundle-play-store
+          path: mobile/build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+      - name: Upload APKs (direct install)
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-direct-install
+          path: mobile/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
