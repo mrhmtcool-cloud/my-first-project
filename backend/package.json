@@ -1,0 +1,17 @@
+{
+  "name": "labors-near-me-api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Labors Near Me — hyperlocal worker discovery API + PWA",
+  "dependencies": {
+    "express": "^5.2.1",
+    "leaflet": "^1.9.4"
+  }
+}

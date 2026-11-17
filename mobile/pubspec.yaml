@@ -1,0 +1,31 @@
+name: labors_near_me
+description: "Labors Near Me — लेबर्स नियर मी. Find trusted workers near you."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0                 # REST client (same contract as web/js/api.js)
+  geolocator: ^12.0.0          # GPS "near me"
+  url_launcher: ^6.3.0         # tel: · wa.me · google maps directions
+  shared_preferences: ^2.2.0   # token / lang / city / favorites cache
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.13.1
+
+# App icon → launcher icons for Android + iOS (run: dart run flutter_launcher_icons)
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon.png"
+  remove_alpha_ios: true
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon.png

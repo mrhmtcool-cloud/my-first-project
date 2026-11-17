@@ -1,0 +1,9 @@
+node_modules/
+backend/data/
+*.jks
+*.keystore
+mobile/build/
+mobile/.dart_tool/
+mobile/android/key.properties
+mobile/.flutter-plugins*
+.DS_Store

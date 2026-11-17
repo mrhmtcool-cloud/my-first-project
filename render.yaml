@@ -1,0 +1,26 @@
+# render.yaml — One-click deploy for Labors Near Me
+# Push this repo to GitHub, then go to https://render.com/deploy?repo=YOUR_GITHUB_URL
+# Render will read this file and create the service automatically.
+services:
+  - type: web
+    name: labors-near-me
+    env: node
+    plan: free
+    # Root is repo root (contains backend/ + web/)
+    buildCommand: cd backend && npm install
+    startCommand: node backend/src/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Optional — add when you have keys (app works without them in demo mode):
+      # - key: MSG91_AUTHKEY
+      #   sync: false
+      # - key: MSG91_SENDER_ID
+      #   value: LNMAPP
+      # - key: MSG91_TEMPLATE_ID
+      #   sync: false
+      # - key: FCM_SERVER_KEY
+      #   sync: false
+      # - key: CLOUDINARY_URL
+      #   sync: false
