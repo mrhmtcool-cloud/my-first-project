@@ -40,9 +40,9 @@ function check(name, cond, extra) {
 
   console.log('— public —');
   const cats = await call('GET', '/categories');
-  check('categories = 16', cats.length === 16);
+  check('categories = 18', cats.length === 18);
   const cities = await call('GET', '/cities');
-  check('cities = 10', cities.length === 10);
+  check('cities = 13', cities.length === 13);
 
   const near = await call('GET', '/providers/nearby?cityId=indore&q=tailor&sort=distance');
   check('nearby tailor search', near.results.length > 0, JSON.stringify(near).slice(0, 100));
@@ -165,6 +165,53 @@ function check(name, cond, extra) {
   catch (e) { check('stranger preview → 403', e.status === 403); }
   try { await call('GET', `/providers/${seedPendingId}`); check('anon view of unverified → 404', false); }
   catch (e) { check('anon view of unverified → 404', e.status === 404); }
+
+  console.log('— v2: PAN India + profile + media + moderation —');
+  const states = await call('GET', '/states');
+  check('states = 36 (28 states + 8 UTs)', states.length === 36);
+  const mp = states.find((s) => s.state === 'Madhya Pradesh');
+  check('MP has districts incl. Indore', mp && mp.districts.includes('Indore') && mp.districts.length >= 50);
+  // profile (name/bio/about/address/state/district)
+  const prof = await call('PUT', '/me/profile', { name: 'Test Updated', bio: 'BIO', about: 'ABOUT', address: 'ADDR', state: 'Madhya Pradesh', district: 'Indore' });
+  check('profile update', prof.user.bio === 'BIO' && prof.user.district === 'Indore');
+  // register with 'others' + customService
+  const reg2 = await call('POST', '/providers/register', {
+    name: 'Custom Worker', phone: '9812345678', categoryId: 'others',
+    customService: 'RO Repair', cityId: 'indore', state: 'Madhya Pradesh', district: 'Indore', address: 'Test Rd',
+    gallery: ['data:image/png;base64,AAAA'], videoLinks: ['https://youtu.be/dQw4w9WgXcQ'],
+  });
+  check('others + customService register', reg2.provider && reg2.provider.id);
+  const prv2 = await call('GET', `/providers/${reg2.provider.id}?preview=1`);
+  check('customService stored', prv2.customService === 'RO Repair');
+  check('gallery stored', prv2.gallery.length === 1);
+  check('video parsed', prv2.videoLinks[0].videoId === 'dQw4w9WgXcQ');
+  // gallery add/remove
+  await call('POST', `/me/providers/${reg2.provider.id}/gallery`, { photo: 'data:image/png;base64,BBBB' });
+  const prv3 = await call('GET', `/providers/${reg2.provider.id}?preview=1`);
+  check('gallery add', prv3.gallery.length === 2);
+  await call('DELETE', `/me/providers/${reg2.provider.id}/gallery/1`);
+  const prv4 = await call('GET', `/providers/${reg2.provider.id}?preview=1`);
+  check('gallery remove', prv4.gallery.length === 1);
+  // videos PUT
+  await call('PUT', `/me/providers/${reg2.provider.id}/videos`, { links: ['https://youtube.com/watch?v=abcdefghij'] });
+  const prv5 = await call('GET', `/providers/${reg2.provider.id}?preview=1`);
+  check('videos PUT', prv5.videoLinks.length === 1 && prv5.videoLinks[0].videoId === 'abcdefghij');
+  // feedback
+  await call('POST', '/feedback', { message: 'Dark mode add karo', name: 'Tester', type: 'user', rating: 5 });
+  API.token = admin.token; API.user = admin.user;
+  const fbs = await call('GET', '/admin/feedback');
+  check('feedback inbox', fbs.length === 1 && fbs[0].message.includes('Dark mode'));
+  // admin moderation
+  const users = await call('GET', '/admin/users');
+  check('admin users list', Array.isArray(users) && users.length > 2);
+  const victim = users.find((x) => x.name === 'Test Updated');
+  await call('POST', `/admin/users/${victim.id}/status`, { status: 'blocked', reason: 'abuse test' });
+  const users2 = await call('GET', '/admin/users');
+  check('user blocked', users2.find((x) => x.id === victim.id).status === 'blocked');
+  await call('DELETE', `/admin/users/${victim.id}`);
+  const users3 = await call('GET', '/admin/users');
+  check('user deleted', !users3.find((x) => x.id === victim.id));
+  // blocked user providers are gone too → gallery provider belonged to victim? (Test Updated owns Custom Worker)
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

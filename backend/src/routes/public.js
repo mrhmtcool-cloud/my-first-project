@@ -12,6 +12,9 @@ const router = express.Router();
 function publicProvider(p, db, origin) {
   const cat = db.categories.find((c) => c.id === p.categoryId) || {};
   const sub = (cat.subcategories || []).find((s) => s.id === p.subcategory) || {};
+  // 🪪 Aadhaar badge — sirf true/false; number public API me kabhi nahi jata
+  const owner = p.userId ? db.users.find((u) => u.id === p.userId) : null;
+  const aadhaarVerified = p.aadhaarVerified === true || !!((owner || {}).aadhaar && owner.aadhaar.status === 'verified');
   return {
     id: p.id,
     name: p.name,
@@ -21,17 +24,57 @@ function publicProvider(p, db, origin) {
     subcategory: p.subcategory,
     subcategoryNameEn: sub.name_en || '', subcategoryNameHi: sub.name_hi || '',
     categoryIcon: cat.icon || 'wrench',
+    categoryIconImage: cat.iconImage || '',
     phone: p.phone, whatsapp: p.whatsapp,
     photo: p.photo,
+    customService: p.customService || '',
+    gallery: p.gallery || [],        // 📸 kaam/store ki photos
+    videoLinks: p.videoLinks || [],  // 🎥 YouTube links
     about: p.about, skills: p.skills, priceHint: p.priceHint,
     address: p.address, location: p.location,
     availability: p.availability,
     isOpenNow: isOpenNow(p.availability),
     verified: p.verified,
+    aadhaarVerified,
+    status: p.status || 'active',
     ratingAvg: p.ratingAvg, ratingCount: p.ratingCount,
     languages: p.languages,
   };
 }
+
+// GET /api/states — PAN India states + districts (register/profile dropdowns)
+const STATES = require('../states');
+router.get('/states', (req, res) => res.json(STATES));
+
+// POST /api/feedback — app feedback (customer/provider/koi bhi) — login optional
+// Purpose: app me sudhar ke liye suggestions/complaints collect karna
+router.post('/feedback', (req, res) => {
+  const db = load();
+  const b = req.body || {};
+  const message = String(b.message || '').trim();
+  if (message.length < 5) return res.status(400).json({ error: 'message_required', hint: 'Thoda detail me likho (kam se kam 5 akshar)' });
+  // optional login: agar token hai to userId attach ho jayega (niche middleware se nahi — public route hai)
+  let userId = null;
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const session = token && db.sessions.find((s) => s.token === token);
+  if (session) userId = session.userId;
+  db.feedback = db.feedback || [];
+  db.feedback.unshift({
+    id: uid('fb'),
+    userId,
+    name: String(b.name || '').slice(0, 60),
+    contact: String(b.contact || '').slice(0, 80),
+    type: ['user', 'provider', 'other'].includes(b.type) ? b.type : 'user',
+    rating: Math.max(1, Math.min(5, Number(b.rating) || 5)),
+    message: message.slice(0, 1000),
+    status: 'new',
+    createdAt: new Date().toISOString(),
+  });
+  db.feedback = db.feedback.slice(0, 1000);
+  save();
+  res.status(201).json({ ok: true, message: 'Feedback mil gaya — shukriya! 🙏' });
+});
 
 // GET /api/categories — icon grid data (bilingual names + subcategories)
 router.get('/categories', (req, res) => {
@@ -72,7 +115,7 @@ router.get('/providers/nearby', (req, res) => {
   }
 
   let rows = db.providers
-    .filter((p) => p.verified === 'verified') // seekers only see verified listings
+    .filter((p) => p.verified === 'verified' && (p.status || 'active') === 'active') // seekers only see verified + active listings
     .map((p) => {
       const d = haversineMetres(lat, lng, p.location.lat, p.location.lng);
       return { p, distance: d };
@@ -127,7 +170,7 @@ router.get('/providers/:id', (req, res) => {
   const db = load();
   const p = db.providers.find((x) => x.id === req.params.id);
   if (!p) return res.status(404).json({ error: 'provider_not_found' });
-  if (p.verified !== 'verified') {
+  if (p.verified !== 'verified' || (p.status && p.status !== 'active')) {
     if (req.query.preview !== '1') return res.status(404).json({ error: 'provider_not_found' });
     // optional auth: only the owner or an admin may preview an unverified listing
     const header = req.headers.authorization || '';

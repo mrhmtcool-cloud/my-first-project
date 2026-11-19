@@ -32,7 +32,7 @@ artifact download करें, और repo secrets में 4 values डाल
 cd mobile
 flutter pub get
 dart run flutter_launcher_icons      # assets/icon.png → launcher icons
-flutter create . --platforms android --org in.laborsnearme
+flutter create . --platforms android --org com.laborsnearme
 flutter build apk --release --split-per-abi
 flutter build appbundle --release    # Play Store के लिए
 ```

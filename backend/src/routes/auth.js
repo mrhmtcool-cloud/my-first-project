@@ -13,7 +13,13 @@ const router = express.Router();
 const phoneOk = (p) => /^[6-9]\d{9}$/.test(String(p || ''));
 
 function publicUser(u) {
-  return { id: u.id, phone: u.phone, name: u.name, role: u.role, cityId: u.cityId };
+  return {
+    id: u.id, phone: u.phone, name: u.name, role: u.role, cityId: u.cityId,
+    state: u.state || '', district: u.district || '',
+    bio: u.bio || '', about: u.about || '', address: u.address || '',
+    photo: u.photo || null, googleEmail: u.googleEmail || '', status: u.status || 'active',
+    providerId: u.providerId || null,
+  };
 }
 
 /** Bearer-token middleware used by /me routes (exported for app.js). */
@@ -25,6 +31,10 @@ function requireAuth(req, res, next) {
   if (!session) return res.status(401).json({ error: 'unauthorized' });
   req.user = db.users.find((u) => u.id === session.userId);
   if (!req.user) return res.status(401).json({ error: 'unauthorized' });
+  // 🛡️ Moderation: suspended/blocked/deleted accounts cannot use the API
+  if (req.user.status && req.user.status !== 'active') {
+    return res.status(403).json({ error: 'account_' + req.user.status, hint: 'Aapka account admin ne ' + req.user.status + ' kiya hai. Support se sampark karein.' });
+  }
   next();
 }
 
@@ -71,12 +81,18 @@ router.post('/auth/verify-otp', (req, res) => {
       id: uid('u'), phone,
       name: String(req.body.name || '').slice(0, 60) || 'User ' + phone.slice(-4),
       role: 'user', cityId: String(req.body.cityId || 'indore'),
+      state: String(req.body.state || '').slice(0, 40),
+      district: String(req.body.district || '').slice(0, 60),
+      status: 'active',
+      bio: '', about: '', address: '', photo: null,
       createdAt: new Date().toISOString(),
     };
     db.users.push(user);
   } else if (req.body.name) {
     user.name = String(req.body.name).slice(0, 60);
   }
+  if (req.body.state) user.state = String(req.body.state).slice(0, 40);
+  if (req.body.district) user.district = String(req.body.district).slice(0, 60);
   const token = issueToken(db, user.id);
   save();
   res.json({ token, user: publicUser(user) });
@@ -99,6 +115,56 @@ router.post('/auth/google', (req, res) => {
   const token = issueToken(db, user.id);
   save();
   res.json({ token, user: publicUser(user) });
+});
+
+// POST /api/auth/firebase  { idToken } — REAL Firebase Auth (Phone OTP ya Google se mila ID token)
+// Verify: Google Identity Toolkit REST (koi extra npm package nahi chahiye).
+// Agar FIREBASE_API_KEY set nahi hai to 501 — client demo mode me chalta hai.
+router.post('/auth/firebase', async (req, res) => {
+  const apiKey = process.env.FIREBASE_API_KEY;
+  if (!apiKey) return res.status(501).json({ error: 'firebase_not_configured', hint: 'FIREBASE_API_KEY env set karo (FIREBASE_SETUP_HINDI.md dekho)' });
+  const idToken = String(req.body.idToken || '');
+  if (!idToken) return res.status(400).json({ error: 'id_token_required' });
+  try {
+    const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + apiKey, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+    const j = await r.json();
+    const fb = j && j.users && j.users[0];
+    if (!fb) return res.status(401).json({ error: 'invalid_firebase_token' });
+
+    const phone = (fb.phoneNumber || '').replace(/\D/g, '').slice(-10) || '';
+    const email = (fb.email || '').toLowerCase() || '';
+    const db = load();
+    // priority: firebaseUid → phone → email
+    let user = (fb.localId && db.users.find((u) => u.firebaseUid === fb.localId))
+      || (phone && db.users.find((u) => u.phone === phone))
+      || (email && db.users.find((u) => u.googleEmail === email));
+    if (!user) {
+      user = {
+        id: uid('u'), phone,
+        name: String(req.body.name || fb.displayName || (phone ? 'User ' + phone.slice(-4) : email.split('@')[0])).slice(0, 60),
+        role: 'user', cityId: String(req.body.cityId || 'indore'),
+        state: String(req.body.state || '').slice(0, 40),
+        district: String(req.body.district || '').slice(0, 60),
+        googleEmail: email, firebaseUid: fb.localId,
+        status: 'active', bio: '', about: '', address: '', photo: null,
+        createdAt: new Date().toISOString(),
+      };
+      db.users.push(user);
+    } else {
+      if (!user.firebaseUid) user.firebaseUid = fb.localId;
+      if (!user.googleEmail && email) user.googleEmail = email;
+      if (!user.phone && phone) user.phone = phone;
+    }
+    const token = issueToken(db, user.id);
+    save();
+    res.json({ token, user: publicUser(user) });
+  } catch (e) {
+    console.error('[firebase] verify error', e.message);
+    res.status(502).json({ error: 'firebase_verify_failed' });
+  }
 });
 
 // GET /api/auth/me

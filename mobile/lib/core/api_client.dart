@@ -11,7 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiClient {
   static const String apiBase = String.fromEnvironment(
     'API_BASE',
-    defaultValue: 'https://YOUR-API-URL.onrender.com', // ← replace with your URL
+    defaultValue: 'https://labors-near-me.onrender.com', // ← live backend (Render)
   );
   static String? token;       // set after OTP login
   static String? userName;    // cached display name

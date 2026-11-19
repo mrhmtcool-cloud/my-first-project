@@ -244,4 +244,114 @@ router.post('/admin/reports/:id/resolve', (req, res) => {
   res.json({ ok: true });
 });
 
+/* ───────────── FEEDBACK (app improvement ke liye) ───────────────── */
+// GET /api/admin/feedback — sabhi feedback padho (users/providers ka)
+router.get('/admin/feedback', (req, res) => {
+  const db = load();
+  res.json((db.feedback || []).map((f) => ({
+    ...f,
+    userName: f.userId ? (db.users.find((u) => u.id === f.userId) || {}).name || f.name : f.name,
+  })));
+});
+
+// POST /api/admin/feedback/:id/resolve — padh liya / nipta diya
+router.post('/admin/feedback/:id/resolve', (req, res) => {
+  const db = load();
+  const f = (db.feedback || []).find((x) => x.id === req.params.id);
+  if (f) { f.status = 'read'; save(); }
+  res.json({ ok: true });
+});
+
+/* ───────────── USER MODERATION (block / suspend / delete) ───────────────── */
+// 🛡️ Rule: koi bhi user/provider jo abuse, harassment, galat content kare —
+// admin use suspend (temporary), block (permanent), ya delete kar sakta hai.
+
+// GET /api/admin/users — sabhi users ki list (moderation ke liye)
+router.get('/admin/users', (req, res) => {
+  const db = load();
+  res.json(db.users.map((u) => ({
+    id: u.id, name: u.name, phone: u.phone, googleEmail: u.googleEmail || '',
+    role: u.role, status: u.status || 'active', cityId: u.cityId,
+    state: u.state || '', district: u.district || '',
+    createdAt: u.createdAt,
+    aadhaarVerified: (u.aadhaar || {}).status === 'verified',
+    providerCount: db.providers.filter((p) => p.userId === u.id).length,
+    reportCount: db.reports.filter((r) => r.targetId === u.id || (r.userId === u.id)).length,
+  })));
+});
+
+// POST /api/admin/users/:id/status  { status: active|suspended|blocked|deleted, reason? }
+router.post('/admin/users/:id/status', (req, res) => {
+  const db = load();
+  const u = db.users.find((x) => x.id === req.params.id);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  const status = String(req.body.status || '');
+  if (!['active', 'suspended', 'blocked', 'deleted'].includes(status)) {
+    return res.status(400).json({ error: 'invalid_status', hint: 'active | suspended | blocked | deleted' });
+  }
+  if (u.role === 'admin' && status !== 'active') return res.status(400).json({ error: 'cannot_moderate_admin' });
+  u.status = status;
+  u.statusReason = String(req.body.reason || '').slice(0, 200);
+  u.statusAt = new Date().toISOString();
+  // user ke saare providers bhi inactive ho jayenge (blocked/deleted par)
+  if (status === 'blocked' || status === 'deleted') {
+    db.providers.filter((p) => p.userId === u.id).forEach((p) => { p.status = status; });
+  }
+  // active session khatam (blocked/deleted par dobara login bhi rok dega requireAuth)
+  if (status === 'blocked' || status === 'deleted') {
+    db.sessions = db.sessions.filter((s) => s.userId !== u.id);
+  }
+  save();
+  res.json({ ok: true, status });
+});
+
+// DELETE /api/admin/users/:id — user + uske listings/reviews/favorites hatao
+router.delete('/admin/users/:id', (req, res) => {
+  const db = load();
+  const u = db.users.find((x) => x.id === req.params.id);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  if (u.role === 'admin') return res.status(400).json({ error: 'cannot_delete_admin' });
+  const providerIds = db.providers.filter((p) => p.userId === u.id).map((p) => p.id);
+  db.providers = db.providers.filter((p) => p.userId !== u.id);
+  db.reviews = db.reviews.filter((r) => r.userId !== u.id && !providerIds.includes(r.providerId));
+  db.favorites = db.favorites.filter((f) => f.userId !== u.id && !providerIds.includes(f.providerId));
+  db.leads = db.leads.filter((l) => !providerIds.includes(l.providerId));
+  db.sessions = db.sessions.filter((s) => s.userId !== u.id);
+  db.users = db.users.filter((x) => x.id !== u.id);
+  save();
+  res.json({ ok: true, deletedProviders: providerIds.length });
+});
+
+// POST /api/admin/providers/:id/status  { status: active|suspended|blocked|deleted, reason? }
+// (verify/reject alag hai — ye moderation ke liye: galat content wali listing ko hatana)
+router.post('/admin/providers/:id/status', (req, res) => {
+  const db = load();
+  const p = db.providers.find((x) => x.id === req.params.id);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  const status = String(req.body.status || '');
+  if (!['active', 'suspended', 'blocked', 'deleted'].includes(status)) {
+    return res.status(400).json({ error: 'invalid_status', hint: 'active | suspended | blocked | deleted' });
+  }
+  p.status = status;
+  p.statusReason = String(req.body.reason || '').slice(0, 200);
+  save();
+  res.json({ ok: true, status });
+});
+
+// DELETE /api/admin/reviews/:id — abusive/galat review hatao + rating dobara calculate
+router.delete('/admin/reviews/:id', (req, res) => {
+  const db = load();
+  const r = db.reviews.find((x) => x.id === req.params.id);
+  if (!r) return res.status(404).json({ error: 'not_found' });
+  db.reviews = db.reviews.filter((x) => x.id !== r.id);
+  const p = db.providers.find((x) => x.id === r.providerId);
+  if (p) {
+    const rest = db.reviews.filter((x) => x.providerId === p.id);
+    p.ratingCount = rest.length;
+    p.ratingAvg = rest.length ? Math.round((rest.reduce((s, x) => s + x.rating, 0) / rest.length) * 10) / 10 : 0;
+  }
+  save();
+  res.json({ ok: true });
+});
+
 module.exports = router;

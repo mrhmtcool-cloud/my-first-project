@@ -7,7 +7,7 @@
 
 /* ═══════════════ STATE ═══════════════ */
 const S = {
-  cats: [], cities: [],
+  cats: [], cities: [], states: [],
   cityId: localStorage.getItem('lnm_city') || 'indore',
   origin: null,                 // {lat, lng, label}
   gps: false,
@@ -28,13 +28,15 @@ const S = {
   applyStaticI18n();
   bindShell();
   try {
-    const [cats, cities] = await Promise.all([API.get('/categories'), API.get('/cities')]);
-    S.cats = cats; S.cities = cities;
+    const [cats, cities, states] = await Promise.all([
+      API.get('/categories'), API.get('/cities'), API.get('/states').catch(() => []),
+    ]);
+    S.cats = cats; S.cities = cities; S.states = states;
   } catch (e) { console.error('meta load failed', e); }
   if (API.user) refreshFavorites();
   window.addEventListener('hashchange', route);
   route();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // (service worker hataya gaya — purana cache problem karta tha; sw.js ab sirf cleaner hai)
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.deferredInstall = e; });
   window.addEventListener('online', updateOnline); window.addEventListener('offline', updateOnline);
   updateOnline();
@@ -269,6 +271,9 @@ function route(soft) {
     case 'register': return viewRegister(view);
     case 'dashboard': return viewDashboard(view);
     case 'admin': return viewAdmin(view, parts[1]);
+    case 'about': return viewAbout(view);
+    case 'contact': return viewContact(view);
+    case 'feedback': return viewFeedback(view);
     default: return viewHome(view);
   }
   if (!soft) window.scrollTo(0, 0);
@@ -282,7 +287,7 @@ function destroyMap() {
 async function viewHome(view) {
   const catGrid = S.cats.map((c) => `
     <a class="cat-item" href="#/search?cat=${c.id}">
-      <span class="cat-ico" style="background:${CAT_COLORS[c.id] || '#F59E0B'}">${icon(c.icon || 'wrench')}</span>
+      <span class="cat-ico" style="background:${CAT_COLORS[c.id] || '#F59E0B'}">${catIconHtml(c.icon, c.iconImage)}</span>
       <span class="cat-name">${esc(locName(c.name_en, c.name_hi))}</span>
     </a>`).join('');
 
@@ -467,7 +472,7 @@ function renderMapView(box, results) {
     const color = CAT_COLORS[p.categoryId] || '#F59E0B';
     const pin = L.divIcon({
       className: '',
-      html: `<div class="pin-dot" style="background:${color}">${icon(p.categoryIcon || 'wrench')}</div>`,
+      html: `<div class="pin-dot" style="background:${color}">${catIconHtml(p.categoryIcon, p.categoryIconImage)}</div>`,
       iconSize: [34, 34], iconAnchor: [17, 30],
     });
     L.marker([p.location.lat, p.location.lng], { icon: pin }).addTo(map)
@@ -521,7 +526,7 @@ async function viewDetail(view, id, query) {
         ${avatarSvg(p.businessName, p.categoryId, p.photo)}
         <div class="card-info">
           <h2 style="margin:0 0 2px;font-size:1.2rem">${esc(p.businessName)}</h2>
-          <div class="card-sub">${esc(locName(p.categoryNameEn, p.categoryNameHi))} · ${esc(locName(p.subcategoryNameEn, p.subcategoryNameHi))}</div>
+          <div class="card-sub">${p.customService ? esc(p.customService) + ' · ' : ''}${esc(locName(p.categoryNameEn, p.categoryNameHi))}${p.subcategoryNameEn ? ' · ' + esc(locName(p.subcategoryNameEn, p.subcategoryNameHi)) : ''}</div>
           ${stars(p.ratingAvg, p.ratingCount)}
           <div class="card-badges">
             <span class="badge ${p.isOpenNow ? 'badge-open' : 'badge-closed'}">${p.isOpenNow ? '● ' + t('open_now') : '● ' + t('closed_now')}</span>
@@ -542,6 +547,12 @@ async function viewDetail(view, id, query) {
     </div>
 
     ${p.about ? `<div class="panel"><h4>${t('about')}</h4><div class="muted">${esc(p.about)}</div></div>` : ''}
+    ${p.gallery && p.gallery.length ? `<div class="panel"><h4>📸 ${t('gallery_of')}</h4>
+      <div class="gallery-grid">${p.gallery.map((g) => `<div class="gallery-item"><img src="${g}" alt="" loading="lazy"></div>`).join('')}</div></div>` : ''}
+    ${p.videoLinks && p.videoLinks.length ? `<div class="panel"><h4>🎥 ${t('videos_l')}</h4>
+      <div class="gallery-grid">${p.videoLinks.map((v) => `
+        <a class="gallery-item video-thumb" href="https://www.youtube.com/watch?v=${esc(v.videoId)}" target="_blank" rel="noopener">
+          <img src="${ytThumb(v.videoId)}" alt="" loading="lazy"><span class="play-badge">▶</span></a>`).join('')}</div></div>` : ''}
     ${p.skills && p.skills.length ? `<div class="panel"><h4>${t('skills')}</h4><div class="skill-chips">${p.skills.map((k) => `<span class="chip">${esc(k)}</span>`).join('')}</div>
       ${p.priceHint ? `<div class="kv"><span class="k">${t('price_hint')}</span><span>${esc(p.priceHint)}</span></div>` : ''}</div>` : ''}
 
@@ -570,7 +581,7 @@ async function viewDetail(view, id, query) {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', maxZoom: 19 }).addTo(map);
     const color = CAT_COLORS[p.categoryId] || '#F59E0B';
     L.marker([p.location.lat, p.location.lng], {
-      icon: L.divIcon({ className: '', html: `<div class="pin-dot" style="background:${color}">${icon(p.categoryIcon || 'wrench')}</div>`, iconSize: [34, 34], iconAnchor: [17, 30] }),
+      icon: L.divIcon({ className: '', html: `<div class="pin-dot" style="background:${color}">${catIconHtml(p.categoryIcon, p.categoryIconImage)}</div>`, iconSize: [34, 34], iconAnchor: [17, 30] }),
     }).addTo(map);
     map.on('click', () => window.open(contactLink(p, 'directions'), '_blank'));
   } catch (e) {}
@@ -655,28 +666,40 @@ function viewLogin(view) {
             </div>
           </div>
           <button class="btn btn-primary btn-block" id="login-go">${t('verify')}</button>
-          <button class="btn btn-ghost btn-block" id="google-go">${t('google_login')}</button>
+          <button class="btn btn-ghost btn-block" id="google-go">${LnmFirebase.configured ? t('google_real') : t('google_login')}</button>
         </div>
       </div>
     </div>`;
   let step = 1;
+  let fbConfirmation = null; // Firebase phone auth confirmation (real OTP mode)
   document.getElementById('login-go').onclick = async () => {
     const phone = document.getElementById('login-phone').value.replace(/\D/g, '').slice(-10);
     if (step === 1) {
       try {
-        await API.post('/auth/request-otp', { phone });
+        if (LnmFirebase.configured) {
+          // 🔥 REAL OTP — Firebase Phone Auth (SMS asli me jaata hai)
+          fbConfirmation = await LnmFirebase.phoneStart('+91' + phone, document.getElementById('login-go'));
+          toast(t('otp_sent'));
+        } else {
+          await API.post('/auth/request-otp', { phone });
+          toast(t('otp_sent'));
+        }
         step = 2;
         document.getElementById('login-step2').style.display = 'block';
         document.getElementById('login-go').textContent = t('verify');
-        document.getElementById('login-otp').value = '123456';
-        toast(t('otp_sent'));
+        document.getElementById('login-otp').value = LnmFirebase.configured ? '' : '123456';
       } catch (e) { toast(e.data?.hint || t('error_gen')); }
     } else {
       try {
-        const r = await API.post('/auth/verify-otp', {
-          phone, code: document.getElementById('login-otp').value,
-          name: document.getElementById('login-name').value, cityId: S.cityId,
-        });
+        let r;
+        if (LnmFirebase.configured && fbConfirmation) {
+          r = await LnmFirebase.phoneVerify(fbConfirmation, document.getElementById('login-otp').value);
+        } else {
+          r = await API.post('/auth/verify-otp', {
+            phone, code: document.getElementById('login-otp').value,
+            name: document.getElementById('login-name').value, cityId: S.cityId,
+          });
+        }
         API.token = r.token; API.user = r.user;
         toast('✓ ' + r.user.name);
         await refreshFavorites();
@@ -686,12 +709,18 @@ function viewLogin(view) {
   };
   document.getElementById('google-go').onclick = async () => {
     try {
-      const r = await API.post('/auth/google', { name: 'Google User', email: 'demo.user@gmail.com' });
+      let r;
+      if (LnmFirebase.configured) {
+        r = await LnmFirebase.google(); // 🔥 REAL Google login
+      } else {
+        toast(t('firebase_off'));
+        r = await API.post('/auth/google', { name: 'Google User', email: 'demo.user@gmail.com' });
+      }
       API.token = r.token; API.user = r.user;
       toast('✓ ' + r.user.name);
       await refreshFavorites();
       history.back();
-    } catch (e) { toast(t('error_gen')); }
+    } catch (e) { toast(e.data?.hint || t('error_gen')); }
   };
   window.scrollTo(0, 0);
 }
@@ -721,12 +750,43 @@ function viewAccount(view) {
   const u = API.user;
   view.innerHTML = `
     <div class="panel" style="text-align:center">
-      <div style="width:72px;height:72px;margin:6px auto;border-radius:50%;background:var(--amber-soft);display:grid;place-items:center">
-        ${icon('user', 'ic ic-lg')}
+      <div style="width:72px;height:72px;margin:6px auto;border-radius:50%;background:var(--amber-soft);display:grid;place-items:center;overflow:hidden">
+        ${u && u.photo ? `<img src="${u.photo}" style="width:72px;height:72px;object-fit:cover" alt="">` : icon('user', 'ic ic-lg')}
       </div>
-      ${u ? `<h3 style="margin:6px 0 2px">${esc(u.name)}</h3><div class="muted">+91 ${esc(u.phone || '—')} · ${u.role}</div>`
+      ${u ? `<h3 style="margin:6px 0 2px">${esc(u.name)}</h3>
+          <div class="muted">+91 ${esc(u.phone || '—')} · ${u.role}</div>
+          ${u.bio ? `<div class="tiny" style="margin-top:4px">${esc(u.bio)}</div>` : ''}
+          ${(u.state || u.district) ? `<div class="tiny muted">📍 ${esc([u.district, u.state].filter(Boolean).join(', '))}</div>` : ''}`
           : `<h3 style="margin:6px 0">${t('my_account')}</h3><a class="btn btn-primary" href="#/login">${t('login')}</a>`}
     </div>
+    ${u ? `
+    <div class="panel">
+      <div class="section-title" style="margin:0 0 10px">👤 ${t('my_profile')}</div>
+      <div class="form">
+        <div class="field"><label class="label">${t('name_l')}</label>
+          <input class="input" id="p-name" value="${esc(u.name || '')}"></div>
+        <div class="field"><label class="label">${t('bio_l')}</label>
+          <input class="input" id="p-bio" maxlength="200" value="${esc(u.bio || '')}"></div>
+        <div class="field"><label class="label">${t('about_me')}</label>
+          <textarea class="textarea" id="p-about" maxlength="500">${esc(u.about || '')}</textarea></div>
+        <div class="field"><label class="label">${t('address_opt')}</label>
+          <input class="input" id="p-addr" value="${esc(u.address || '')}"></div>
+        <div class="row-2">
+          <div class="field"><label class="label">${t('state_l')}</label>
+            <select class="select" id="p-state"><option value="">${t('select_state')}</option>
+              ${(S.states || []).map((s) => `<option value="${esc(s.state)}" ${u.state === s.state ? 'selected' : ''}>${esc(s.state)}</option>`).join('')}
+            </select></div>
+          <div class="field"><label class="label">${t('district_l')}</label>
+            <select class="select" id="p-district"><option value="">${t('select_district')}</option>
+              ${((((S.states || []).find((s) => s.state === u.state) || {}).districts) || []).map((x) => `<option value="${esc(x)}" ${u.district === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}
+            </select></div>
+        </div>
+        <div class="field"><label class="label">${t('photo_l')}</label>
+          <label class="photo-drop" for="p-photo">${icon('upload', 'ic ic-lg')}<b>${t('add_photo')}</b></label>
+          <input type="file" id="p-photo" accept="image/*" hidden></div>
+        <button class="btn btn-primary btn-block" id="p-save">${t('save_changes')}</button>
+      </div>
+    </div>` : ''}
     <div class="panel">
       <a class="cta-card" href="#/register" style="margin:0 0 10px">
         <span class="cat-ico" style="background:var(--amber);width:44px;height:44px">${icon('plus')}</span>
@@ -742,16 +802,62 @@ function viewAccount(view) {
     <div class="panel">
       <div class="kv"><span class="k">${icon('globe')}</span><span>${t('select_city')}: <b>${esc(locName((S.cities.find((c) => c.id === S.cityId) || {}).name_en || S.cityId, (S.cities.find((c) => c.id === S.cityId) || {}).name_hi))}</b> <button class="btn btn-ghost btn-sm" id="acc-city">${t('change')}</button></span></div>
     </div>
+    <div class="panel">
+      <a class="cta-card" href="#/about" style="margin:0 0 10px">
+        <span class="cat-ico" style="background:var(--amber);width:44px;height:44px">ℹ️</span>
+        <div><b>${t('about_us')}</b></div>${icon('chevron')}</a>
+      <a class="cta-card" href="#/contact">
+        <span class="cat-ico" style="background:var(--ink);width:44px;height:44px">📞</span>
+        <div><b>${t('contact_us')}</b></div>${icon('chevron')}</a>
+      <a class="cta-card" href="#/feedback" style="margin-top:10px">
+        <span class="cat-ico" style="background:#059669;width:44px;height:44px">💬</span>
+        <div><b>${t('feedback')}</b></div>${icon('chevron')}</a>
+    </div>
+    <button class="btn btn-ghost btn-block" id="acc-share">${icon('share')} ${t('share_app2')}</button>
     ${u ? `<button class="btn btn-danger btn-block" id="logout">${t('logout')}</button>` : ''}
     <p class="tiny" style="text-align:center;margin-top:18px">Labors Near Me · Made for India 🇮🇳<br>Demo build — admin login: phone 9000000001, OTP 123456</p>
   `;
   document.getElementById('acc-city').onclick = openCityModal;
+  document.getElementById('acc-share').onclick = () => shareAppOrProvider(null);
   const lo = document.getElementById('logout');
   if (lo) lo.onclick = async () => {
     try { await API.post('/auth/logout'); } catch (e) {}
     API.token = ''; API.user = null; S.favorites = new Set();
     toast('✓'); route(true);
   };
+  // 👤 Profile edit (name, bio, about, address, state, district, photo)
+  if (u) {
+    const pState = document.getElementById('p-state');
+    pState.onchange = () => {
+      const st = (S.states || []).find((s) => s.state === pState.value);
+      document.getElementById('p-district').innerHTML = '<option value="">' + t('select_district') + '</option>'
+        + ((st && st.districts) || []).map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    };
+    let newPhoto;
+    document.getElementById('p-photo').onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      newPhoto = await imgToDataUrl(file, 480, 0.8);
+      toast('📷 ✓');
+    };
+    document.getElementById('p-save').onclick = async () => {
+      try {
+        const body = {
+          name: document.getElementById('p-name').value,
+          bio: document.getElementById('p-bio').value,
+          about: document.getElementById('p-about').value,
+          address: document.getElementById('p-addr').value,
+          state: document.getElementById('p-state').value,
+          district: document.getElementById('p-district').value,
+        };
+        if (newPhoto) body.photo = newPhoto;
+        const r = await API.put('/me/profile', body);
+        API.user = r.user;
+        toast(t('profile_saved'));
+        route(true);
+      } catch (e) { toast(e.data?.hint || t('error_gen')); }
+    };
+  }
   window.scrollTo(0, 0);
 }
 
@@ -782,6 +888,11 @@ function viewRegister(view) {
   const subCat = (S.cats.find((c) => c.id === d.categoryId) || {}).subcategories || [];
   const subOpts = subCat.map((sc) => `<option value="${sc.id}" ${d.subcategory === sc.id ? 'selected' : ''}>${esc(locName(sc.name_en, sc.name_hi))}</option>`).join('');
   const cityOpts = S.cities.map((c) => `<option value="${c.id}" ${d.cityId === c.id ? 'selected' : ''}>${esc(locName(c.name_en, c.name_hi))}</option>`).join('');
+  // PAN India: state → district dropdowns
+  const stateOpts = (S.states || []).map((s) => `<option value="${esc(s.state)}" ${d.state === s.state ? 'selected' : ''}>${esc(s.state)}</option>`).join('');
+  const curState = (S.states || []).find((s) => s.state === d.state);
+  const districtOpts = ((curState && curState.districts) || []).map((x) => `<option value="${esc(x)}" ${d.district === x ? 'selected' : ''}>${esc(x)}</option>`).join('');
+  const isOthers = d.categoryId === 'others';
 
   let formHtml = '';
   if (step === 1) {
@@ -792,8 +903,10 @@ function viewRegister(view) {
         <input class="input" id="r-biz" value="${esc(d.businessName || '')}"></div>
       <div class="field"><label class="label">${t('category')} *</label>
         <select class="select" id="r-cat">${catOpts}</select></div>
-      <div class="field"><label class="label">${t('subcategory')}</label>
-        <select class="select" id="r-sub">${subOpts}</select></div>
+      ${isOthers ? `<div class="field"><label class="label">${t('custom_service')} *</label>
+        <input class="input" id="r-custom" value="${esc(d.customService || '')}" placeholder="${t('custom_service_ph')}">
+        <div class="hint">${t('custom_service_hint')}</div></div>` : `<div class="field"><label class="label">${t('subcategory')}</label>
+        <select class="select" id="r-sub">${subOpts}</select></div>`}
       <div class="row-2">
         <div class="field"><label class="label">${t('phone')} *</label>
           <input class="input" id="r-phone" type="tel" inputmode="numeric" maxlength="10" value="${esc(d.phone || '')}"></div>
@@ -802,6 +915,12 @@ function viewRegister(view) {
       </div>`;
   } else if (step === 2) {
     formHtml = `
+      <div class="row-2">
+        <div class="field"><label class="label">${t('state_l')} *</label>
+          <select class="select" id="r-state"><option value="">${t('select_state')}</option>${stateOpts}</select></div>
+        <div class="field"><label class="label">${t('district_l')}</label>
+          <select class="select" id="r-district"><option value="">${t('select_district')}</option>${districtOpts}</select></div>
+      </div>
       <div class="field"><label class="label">${t('city')}</label>
         <select class="select" id="r-city">${cityOpts}</select></div>
       <div class="field"><label class="label">${t('address_l2')} *</label>
@@ -824,6 +943,20 @@ function viewRegister(view) {
           <b>${t('photo_hint')}</b><span class="hint">JPG/PNG · phone se click karein</span></label>
         <input type="file" id="r-photo" accept="image/*" capture="environment" hidden>
         <div id="photo-prev"></div>
+      </div>
+      <div class="field"><label class="label">📸 ${t('work_photos')}</label>
+        <label class="photo-drop" for="r-gallery">${icon('upload', 'ic ic-lg')}
+          <b>${t('add_photo')}</b><span class="hint">${t('photos_hint')}</span></label>
+        <input type="file" id="r-gallery" accept="image/*" multiple hidden>
+        <div id="gallery-prev" class="gallery-grid"></div>
+      </div>
+      <div class="field"><label class="label">🎥 ${t('videos_l')}</label>
+        <div style="display:flex;gap:8px">
+          <input class="input" id="r-video" placeholder="https://youtube.com/watch?v=…">
+          <button class="btn btn-ghost" id="r-video-add" type="button">${t('add_video')}</button>
+        </div>
+        <div class="hint">${t('video_hint')}</div>
+        <div id="video-list"></div>
       </div>
       <div class="field"><label class="label">${t('about')}</label>
         <textarea class="textarea" id="r-about" placeholder="${t('about_ph')}">${esc(d.about || '')}</textarea></div>
@@ -859,8 +992,8 @@ function viewRegister(view) {
   // capture current fields into draft before navigating
   const capture = () => {
     const g = (id) => { const el = document.getElementById(id); return el ? el.value : undefined; };
-    if (step === 1) Object.assign(d, { name: g('r-name'), businessName: g('r-biz'), categoryId: g('r-cat'), subcategory: g('r-sub'), phone: g('r-phone'), whatsapp: g('r-wa') });
-    if (step === 2) Object.assign(d, { cityId: g('r-city'), address: g('r-addr'), area: g('r-area'), pincode: g('r-pin') });
+    if (step === 1) Object.assign(d, { name: g('r-name'), businessName: g('r-biz'), categoryId: g('r-cat'), subcategory: g('r-sub'), customService: g('r-custom'), phone: g('r-phone'), whatsapp: g('r-wa') });
+    if (step === 2) Object.assign(d, { state: g('r-state'), district: g('r-district'), cityId: g('r-city'), address: g('r-addr'), area: g('r-area'), pincode: g('r-pin') });
     if (step === 3) Object.assign(d, { about: g('r-about'), skills: (g('r-skills') || '').split(',').map((x) => x.trim()).filter(Boolean), priceHint: g('r-price'), open: g('r-open'), close: g('r-close'), kycName: g('r-kyc') });
   };
 
@@ -884,6 +1017,10 @@ function viewRegister(view) {
     };
     if (d.lat) drop({ lat: d.lat, lng: d.lng });
     map.on('click', (e) => drop(e.latlng));
+    // 🗺️ PAN India: state change → district list refresh
+    document.getElementById('r-state').onchange = (e) => {
+      d.state = e.target.value; delete d.district; capture(); viewRegister(view);
+    };
     document.getElementById('r-city').onchange = (e) => {
       d.cityId = e.target.value; capture();
       const c = S.cities.find((x) => x.id === d.cityId);
@@ -907,6 +1044,40 @@ function viewRegister(view) {
       reader.readAsDataURL(file);
     };
     if (d.photo) document.getElementById('photo-prev').innerHTML = `<img src="${d.photo}" style="max-height:120px;border-radius:12px;margin-top:8px" alt="">`;
+    // 📸 work gallery (multi-photo, resized)
+    d.gallery = d.gallery || [];
+    d.videoLinks = d.videoLinks || [];
+    const renderGallery = () => {
+      document.getElementById('gallery-prev').innerHTML = d.gallery.map((g, i) =>
+        `<div class="gallery-item"><img src="${g}" alt=""><button type="button" class="gallery-x" data-i="${i}">✕</button></div>`).join('');
+      document.querySelectorAll('.gallery-x').forEach((b) => b.onclick = () => { d.gallery.splice(Number(b.dataset.i), 1); renderGallery(); });
+    };
+    renderGallery();
+    document.getElementById('r-gallery').onchange = async (e) => {
+      for (const file of [...e.target.files]) {
+        if (d.gallery.length >= 6) { toast('⚠️ 6 ' + t('photos_hint')); break; }
+        try { d.gallery.push(await imgToDataUrl(file, 1600, 0.72)); } catch (err) {}
+      }
+      e.target.value = '';
+      renderGallery();
+    };
+    // 🎥 YouTube links
+    const renderVideos = () => {
+      document.getElementById('video-list').innerHTML = d.videoLinks.map((v, i) =>
+        `<div class="kv"><span class="k">▶</span><span style="flex:1;font-size:.85rem;overflow:hidden;text-overflow:ellipsis">${esc(v.url)}</span>
+         <button type="button" class="btn btn-ghost btn-sm" data-vi="${i}">✕</button></div>`).join('');
+      document.querySelectorAll('[data-vi]').forEach((b) => b.onclick = () => { d.videoLinks.splice(Number(b.dataset.vi), 1); renderVideos(); });
+    };
+    renderVideos();
+    document.getElementById('r-video-add').onclick = () => {
+      const url = document.getElementById('r-video').value.trim();
+      const vid = ytVideoId(url);
+      if (!vid) return toast('⚠️ ' + t('video_hint'));
+      if (d.videoLinks.length >= 5) return toast('⚠️ 5');
+      d.videoLinks.push({ url, videoId: vid });
+      document.getElementById('r-video').value = '';
+      renderVideos();
+    };
   }
 
   const back = document.getElementById('r-back');
@@ -915,6 +1086,8 @@ function viewRegister(view) {
   document.getElementById('r-next').onclick = () => {
     capture();
     if (step === 1 && (!d.name || !d.phone || d.phone.length < 10)) return toast('⚠️ ' + t('phone') + ' / ' + t('name_l'));
+    if (step === 1 && d.categoryId === 'others' && !(d.customService || '').trim()) return toast('⚠️ ' + t('custom_service'));
+    if (step === 2 && !d.state) return toast('⚠️ ' + t('state_l'));
     if (step === 2 && !d.address) return toast('⚠️ ' + t('address_l2'));
     if (step === 3) {
       return submitRegistration(view);
@@ -933,7 +1106,7 @@ async function submitRegistration(view) {
     S.regDraft = {};
     viewRegister(view);
   } catch (e) {
-    toast(t('error_gen'));
+    toast(e.data?.hint || t('error_gen'));
   }
 }
 
@@ -1027,6 +1200,8 @@ async function viewEdit(view, id) {
           <input class="input" id="e-name" value="${esc(p.name)}"></div>
         <div class="field" style="margin-top:10px"><label class="label">${t('business_name')}</label>
           <input class="input" id="e-biz" value="${esc(p.businessName)}"></div>
+        ${p.categoryId === 'others' ? `<div class="field" style="margin-top:10px"><label class="label">${t('custom_service')}</label>
+          <input class="input" id="e-custom" value="${esc(p.customService || '')}" placeholder="${t('custom_service_ph')}"></div>` : ''}
         <div class="row-2" style="margin-top:10px">
           <div class="field"><label class="label">${t('phone')} *</label>
             <input class="input" id="e-phone" maxlength="10" value="${esc(p.phone)}"></div>
@@ -1054,6 +1229,19 @@ async function viewEdit(view, id) {
           <label class="photo-drop" for="e-photo">${icon('upload')}<b>${t('photo_hint')}</b></label>
           <input type="file" id="e-photo" accept="image/*" capture="environment" hidden>
           ${p.photo ? `<button class="btn btn-ghost btn-sm" id="e-photo-del">${t('remove_photo')}</button>` : ''}
+        </div>
+        <div class="field" style="margin-top:10px"><label class="label">📸 ${t('work_photos')}</label>
+          <div id="e-gallery" class="gallery-grid"></div>
+          <label class="photo-drop" for="e-gallery-file">${icon('upload')}<b>${t('add_photo')}</b><span class="hint">${t('photos_hint')}</span></label>
+          <input type="file" id="e-gallery-file" accept="image/*" multiple hidden>
+        </div>
+        <div class="field" style="margin-top:10px"><label class="label">🎥 ${t('videos_l')}</label>
+          <div style="display:flex;gap:8px">
+            <input class="input" id="e-video" placeholder="https://youtube.com/watch?v=…">
+            <button class="btn btn-ghost" id="e-video-add" type="button">${t('add_video')}</button>
+          </div>
+          <div class="hint">${t('video_hint')}</div>
+          <div id="e-video-list"></div>
         </div>
         <div class="field" style="margin-top:10px"><label class="label">${t('about')}</label>
           <textarea class="textarea" id="e-about" placeholder="${t('about_ph')}">${esc(p.about || '')}</textarea></div>
@@ -1084,6 +1272,53 @@ async function viewEdit(view, id) {
     toast('🗑');
   };
 
+  // 📸 Gallery management (turant upload/delete — save ki zaroorat nahi)
+  let gallery = (p.gallery || []).slice();
+  const renderGallery = () => {
+    document.getElementById('e-gallery').innerHTML = gallery.map((g, i) =>
+      `<div class="gallery-item"><img src="${g}" alt=""><button type="button" class="gallery-x" data-gi="${i}">✕</button></div>`).join('') || '<div class="hint">—</div>';
+    document.querySelectorAll('[data-gi]').forEach((b) => b.onclick = async () => {
+      if (!confirm(t('delete'))) return;
+      const idx = Number(b.dataset.gi);
+      try {
+        await API.del(`/me/providers/${id}/gallery/${idx}`);
+        gallery.splice(idx, 1); renderGallery(); toast('🗑');
+      } catch (e) { toast(t('error_gen')); }
+    });
+  };
+  renderGallery();
+  document.getElementById('e-gallery-file').onchange = async (e) => {
+    for (const file of [...e.target.files]) {
+      if (gallery.length >= 6) { toast('⚠️ 6'); break; }
+      try {
+        const url = await imgToDataUrl(file, 1600, 0.72);
+        await API.post(`/me/providers/${id}/gallery`, { photo: url });
+        gallery.push(url);
+      } catch (err) { toast(err.data?.hint || t('error_gen')); }
+    }
+    e.target.value = '';
+    renderGallery();
+  };
+
+  // 🎥 Video links (save ke time PUT honge)
+  let videos = (p.videoLinks || []).slice();
+  const renderVideos = () => {
+    document.getElementById('e-video-list').innerHTML = videos.map((v, i) =>
+      `<div class="kv"><span class="k">▶</span><span style="flex:1;font-size:.85rem;overflow:hidden;text-overflow:ellipsis">${esc(v.url)}</span>
+       <button type="button" class="btn btn-ghost btn-sm" data-evi="${i}">✕</button></div>`).join('');
+    document.querySelectorAll('[data-evi]').forEach((b) => b.onclick = () => { videos.splice(Number(b.dataset.evi), 1); renderVideos(); });
+  };
+  renderVideos();
+  document.getElementById('e-video-add').onclick = () => {
+    const url = document.getElementById('e-video').value.trim();
+    const vid = ytVideoId(url);
+    if (!vid) return toast('⚠️ ' + t('video_hint'));
+    if (videos.length >= 5) return toast('⚠️ 5');
+    videos.push({ url, videoId: vid });
+    document.getElementById('e-video').value = '';
+    renderVideos();
+  };
+
   document.getElementById('e-save').onclick = async () => {
     const body = {
       name: document.getElementById('e-name').value,
@@ -1098,7 +1333,10 @@ async function viewEdit(view, id) {
       about: document.getElementById('e-about').value,
       skills: document.getElementById('e-skills').value.split(',').map((x) => x.trim()).filter(Boolean),
       priceHint: document.getElementById('e-price').value,
+      videoLinks: videos,
     };
+    const customEl = document.getElementById('e-custom');
+    if (customEl) body.customService = customEl.value;
     if (newPhoto !== undefined) body.photo = newPhoto;
     try {
       await API.put('/providers/' + id, body);
@@ -1118,11 +1356,12 @@ async function viewAdmin(view, tab) {
     return;
   }
   S.adminTab = tab || S.adminTab || 'overview';
-  const tabs = ['overview', 'providers', 'categories', 'reports'];
+  const tabs = ['overview', 'providers', 'categories', 'reports', 'users', 'feedback'];
+  const tabLabel = { overview: 'a_overview', providers: 'a_providers', categories: 'a_categories', reports: 'a_reports', users: 'users_tab', feedback: 'feedback' };
   view.innerHTML = `
     <h2 style="margin:4px 0 12px">${t('admin_title')} 🛡️</h2>
     <div class="admin-tabs">
-      ${tabs.map((x) => `<button class="chip ${S.adminTab === x ? 'active' : ''}" onclick="location.hash='#/admin/${x}'">${t(x === 'overview' ? 'a_overview' : x === 'providers' ? 'a_providers' : x === 'categories' ? 'a_categories' : 'a_reports')}</button>`).join('')}
+      ${tabs.map((x) => `<button class="chip ${S.adminTab === x ? 'active' : ''}" onclick="location.hash='#/admin/${x}'">${t(tabLabel[x])}</button>`).join('')}
     </div>
     <div id="admin-body">${skeletons(2)}</div>`;
 
@@ -1131,11 +1370,79 @@ async function viewAdmin(view, tab) {
     if (S.adminTab === 'overview') await adminOverview(body);
     else if (S.adminTab === 'providers') await adminProviders(body);
     else if (S.adminTab === 'categories') await adminCategories(body);
+    else if (S.adminTab === 'users') await adminUsers(body);
+    else if (S.adminTab === 'feedback') await adminFeedback(body);
     else await adminReports(body);
   } catch (e) {
     body.innerHTML = `<div class="empty-state"><p>${t('error_gen')}</p></div>`;
   }
   window.scrollTo(0, 0);
+}
+
+/* ─── Admin: FEEDBACK inbox (app improvement) 💬 ─── */
+async function adminFeedback(body) {
+  const rows = await API.get('/admin/feedback');
+  body.innerHTML = `
+    <div class="hint" style="margin-bottom:10px">💬 Users/providers ka feedback — yahan se naye ideas milte hain!</div>
+    ${rows.length ? rows.map((f) => `
+      <div class="admin-row">
+        <div class="grow">
+          <b>${esc(f.userName || f.name || 'Anonymous')}</b>
+          <span class="badge badge-open">${f.type === 'provider' ? t('fb_provider') : f.type === 'user' ? t('fb_user') : t('fb_other')}</span>
+          <span class="stars">★${f.rating || 5}</span>
+          ${f.status === 'new' ? '<span class="badge badge-pending">NEW</span>' : '<span class="badge badge-verified">✓</span>'}<br>
+          <span class="tiny">${esc(f.contact || '')} · ${timeAgo(f.createdAt)}</span>
+          <div class="muted" style="margin-top:4px">${esc(f.message)}</div>
+        </div>
+        ${f.status === 'new' ? `<button class="btn btn-primary btn-sm" data-fbread="${f.id}">${t('resolve')}</button>` : ''}
+      </div>`).join('') : `<div class="empty-state">${icon('user')}<p>— ${t('no_reports')} —</p></div>`}`;
+  body.querySelectorAll('[data-fbread]').forEach((b) => b.onclick = async () => {
+    await API.post(`/admin/feedback/${b.dataset.fbread}/resolve`);
+    viewAdmin(document.getElementById('view'), 'feedback');
+  });
+}
+
+/* ─── Admin: USER MODERATION (block / suspend / delete) 🛡️ ─── */
+async function adminUsers(body) {
+  const users = await API.get('/admin/users');
+  const statusBadge = (s) => s === 'active' ? `<span class="badge badge-verified">${t('status_active')}</span>`
+    : s === 'suspended' ? `<span class="badge badge-pending">⏸ ${t('status_suspended')}</span>`
+    : s === 'blocked' ? `<span class="badge badge-rejected">🚫 ${t('status_blocked')}</span>`
+    : `<span class="badge badge-rejected">🗑 ${t('status_deleted')}</span>`;
+  body.innerHTML = `
+    <div class="hint" style="margin-bottom:10px">🛡️ Abuse / harassment / galat content par: Suspend (temporary), Block, ya Delete karein.</div>
+    ${users.map((u) => `
+      <div class="admin-row">
+        <div class="grow">
+          <b>${esc(u.name)}</b> ${statusBadge(u.status)} ${u.role === 'admin' ? '<span class="badge badge-verified">ADMIN</span>' : ''}<br>
+          <span class="tiny">+91 ${esc(u.phone || '—')}${u.googleEmail ? ' · ' + esc(u.googleEmail) : ''} · ${u.providerCount} listings · joined ${timeAgo(u.createdAt)}</span>
+        </div>
+        ${u.role === 'admin' ? '' : `
+          ${u.status === 'active' ? `
+            <button class="btn btn-ghost btn-sm" data-suspend="${u.id}">${t('suspend')}</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red)" data-block="${u.id}">${t('block')}</button>`
+          : `<button class="btn btn-primary btn-sm" data-activate="${u.id}">${t('activate')}</button>`}
+          <button class="btn btn-ghost btn-sm" style="color:var(--red)" data-deluser="${u.id}">${t('delete_user')}</button>`}
+      </div>`).join('')}`;
+  body.querySelectorAll('[data-suspend]').forEach((b) => b.onclick = async () => {
+    if (!confirm(t('confirm_suspend'))) return;
+    await API.post(`/admin/users/${b.dataset.suspend}/status`, { status: 'suspended' });
+    toast(t('user_moderated')); viewAdmin(document.getElementById('view'), 'users');
+  });
+  body.querySelectorAll('[data-block]').forEach((b) => b.onclick = async () => {
+    if (!confirm(t('confirm_block'))) return;
+    await API.post(`/admin/users/${b.dataset.block}/status`, { status: 'blocked' });
+    toast(t('user_moderated')); viewAdmin(document.getElementById('view'), 'users');
+  });
+  body.querySelectorAll('[data-activate]').forEach((b) => b.onclick = async () => {
+    await API.post(`/admin/users/${b.dataset.activate}/status`, { status: 'active' });
+    toast(t('user_moderated')); viewAdmin(document.getElementById('view'), 'users');
+  });
+  body.querySelectorAll('[data-deluser]').forEach((b) => b.onclick = async () => {
+    if (!confirm(t('confirm_delete_user'))) return;
+    await API.del(`/admin/users/${b.dataset.deluser}`);
+    toast(t('user_moderated')); viewAdmin(document.getElementById('view'), 'users');
+  });
 }
 
 async function adminOverview(body) {
@@ -1351,7 +1658,7 @@ async function adminCategories(body) {
     <div id="c-form"></div>
     ${rows.map((c) => `
       <div class="admin-row">
-        <span class="cat-ico" style="background:${CAT_COLORS[c.id] || '#F59E0B'};width:38px;height:38px">${icon(c.icon || 'wrench')}</span>
+        <span class="cat-ico" style="background:${CAT_COLORS[c.id] || '#F59E0B'};width:38px;height:38px">${catIconHtml(c.icon, c.iconImage)}</span>
         <div class="grow"><b>${esc(c.name_en)}</b> · ${esc(c.name_hi)}<br>
           <span class="tiny">${(c.subcategories || []).map((s) => esc(s.name_en)).join(' · ')}</span></div>
         <div class="admin-actions">
@@ -1412,4 +1719,102 @@ async function adminReports(body) {
     await API.post(`/admin/reports/${b.dataset.res}/resolve`);
     viewAdmin(document.getElementById('view'), 'reports');
   });
+}
+
+/* ───────────── ABOUT US + CONTACT US (app developers ke liye) ───────────── */
+function viewAbout(view) {
+  view.innerHTML = `
+    <div class="panel">
+      <h2 style="margin:0 0 8px">ℹ️ ${t('about_us')}</h2>
+      <p><b>Labors Near Me</b> — Bharat ke har sheher me kaam karne wale bharosemand logon ko dhoondhne ka aasaan tareeka. 🇮🇳</p>
+      <p class="muted">Electrician, plumber, tailor, doctor, driver — jo chahiye, apne aas-paas GPS se ya city/state chun kar. Seedha call, WhatsApp, directions. Koi commission nahi, koi beech ka aadmi nahi.</p>
+      <ul style="padding-left:18px;line-height:2">
+        <li>🎯 Hyperlocal search — distance ke hisaab se</li>
+        <li>✅ Verified providers + asli reviews</li>
+        <li>📱 Low bandwidth — 2G/3G par bhi tez</li>
+        <li>🗣️ Hindi + English</li>
+        <li>🆓 Providers ke liye listing bilkul FREE</li>
+      </ul>
+      <p class="tiny muted">Version 2.0 · Made in India with ❤️</p>
+    </div>
+    <a class="btn btn-primary btn-block" href="#/contact">${t('contact_us')}</a>`;
+  window.scrollTo(0, 0);
+}
+
+function viewFeedback(view) {
+  view.innerHTML = `
+    <div class="panel">
+      <h2 style="margin:0 0 8px">${t('feedback_title')}</h2>
+      <p class="muted">${t('feedback_sub')}</p>
+      <div class="form">
+        <div class="row-2">
+          <div class="field"><label class="label">${t('name_l')}</label>
+            <input class="input" id="fb-name" value="${esc((API.user || {}).name || '')}"></div>
+          <div class="field"><label class="label">${t('phone')} / Email</label>
+            <input class="input" id="fb-contact" value="${esc((API.user || {}).phone || '')}"></div>
+        </div>
+        <div class="field"><label class="label">${t('fb_type')}</label>
+          <select class="select" id="fb-type">
+            <option value="user">${t('fb_user')}</option>
+            <option value="provider">${t('fb_provider')}</option>
+            <option value="other">${t('fb_other')}</option>
+          </select></div>
+        <div class="field"><label class="label">⭐ ${t('fb_rating')}</label>
+          ${starInput('fb-rating')}</div>
+        <div class="field"><label class="label">${t('fb_msg')} *</label>
+          <textarea class="textarea" id="fb-msg" rows="5"></textarea></div>
+        <button class="btn btn-primary btn-block" id="fb-send">${t('submit')}</button>
+      </div>
+    </div>
+    <button class="btn btn-ghost btn-block" id="fb-share">${icon('share')} ${t('share_app2')}</button>`;
+  bindStarInput(view);
+  document.getElementById('fb-share').onclick = () => shareAppOrProvider(null);
+  document.getElementById('fb-send').onclick = async () => {
+    const message = document.getElementById('fb-msg').value.trim();
+    if (message.length < 5) return toast('⚠️ ' + t('fb_msg'));
+    const rating = Number(view.querySelector('[data-star-input]')?.dataset.val || 5);
+    try {
+      await API.post('/feedback', {
+        message, rating,
+        name: document.getElementById('fb-name').value,
+        contact: document.getElementById('fb-contact').value,
+        type: document.getElementById('fb-type').value,
+      });
+      toast(t('fb_sent'));
+      document.getElementById('fb-msg').value = '';
+    } catch (e) { toast(e.data?.hint || t('error_gen')); }
+  };
+  window.scrollTo(0, 0);
+}
+
+function viewContact(view) {
+  view.innerHTML = `
+    <div class="panel">
+      <h2 style="margin:0 0 8px">📞 ${t('contact_us')}</h2>
+      <p class="muted">Koi sawal, suggestion, ya complaint? Humein bataiye.</p>
+      <div class="form">
+        <div class="field"><label class="label">${t('name_l')}</label>
+          <input class="input" id="c-name" value="${esc((API.user || {}).name || '')}"></div>
+        <div class="field"><label class="label">${t('phone')} / Email</label>
+          <input class="input" id="c-contact" value="${esc((API.user || {}).phone || '')}"></div>
+        <div class="field"><label class="label">${t('your_msg')}</label>
+          <textarea class="textarea" id="c-msg" rows="4"></textarea></div>
+        <button class="btn btn-primary btn-block" id="c-send">${t('submit')}</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="kv"><span class="k">✉️</span><span>support@laborsnearme.in</span></div>
+      <div class="kv"><span class="k">📍</span><span>Indore, Madhya Pradesh, India</span></div>
+      <div class="kv"><span class="k">⏰</span><span>Mon–Sat · 10 AM – 7 PM</span></div>
+    </div>`;
+  document.getElementById('c-send').onclick = async () => {
+    const msg = document.getElementById('c-msg').value.trim();
+    if (!msg) return toast('⚠️ ' + t('your_msg'));
+    try {
+      await API.post('/reports', { targetType: 'user', targetId: 'platform', reason: 'CONTACT: ' + msg.slice(0, 200) });
+    } catch (e) {}
+    toast(t('contact_sent'));
+    document.getElementById('c-msg').value = '';
+  };
+  window.scrollTo(0, 0);
 }

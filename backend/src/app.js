@@ -27,10 +27,36 @@ function createApp() {
 
   // ── Static PWA (website + installable mobile app) ──────────────────────
   const webDir = path.join(__dirname, '..', '..', 'web');
-  app.use(express.static(webDir, { maxAge: '1h', index: 'index.html' }));
+  // ⚠️ Koi bhi file cache NA ho — warna naye features dikhne me der lagti hai
+  // (sirf icons/images thodi der cache ho sakti hain)
+  app.use(express.static(webDir, {
+    maxAge: 0,
+    index: false,
+    setHeaders: (res, filePath) => {
+      const isImage = /\.(png|jpg|jpeg|svg|webp|ico)$/i.test(filePath);
+      if (!isImage) {
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      }
+      if (filePath.endsWith('sw.js')) {
+        res.setHeader('Cache-Control', 'no-store');
+      }
+    },
+  }));
+
+  // 🔧 Purana SW apne aap uninstall ho jaye + cache saaf (self-destruct sw.js)
+  app.get('/sw.js', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(path.join(webDir, 'sw.js'));
+  });
 
   // SPA fallback for any non-API path
-  app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(webDir, 'index.html')));
+  const sendShell = (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.sendFile(path.join(webDir, 'index.html'));
+  };
+  app.get('/fresh', sendShell); // ← cache-free entry point (preview path me /fresh likho)
+  app.get('/v2', sendShell);
+  app.get(/^\/(?!api\/).*/, sendShell);
 
   // ── Errors ─────────────────────────────────────────────────────────────
   app.use((err, req, res, next) => {

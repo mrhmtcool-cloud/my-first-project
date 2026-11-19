@@ -1,7 +1,7 @@
 name: labors_near_me
 description: "Labors Near Me — लेबर्स नियर मी. Find trusted workers near you."
 publish_to: "none"
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -13,19 +13,22 @@ dependencies:
   geolocator: ^12.0.0          # GPS "near me"
   url_launcher: ^6.3.0         # tel: · wa.me · google maps directions
   shared_preferences: ^2.2.0   # token / lang / city / favorites cache
+  share_plus: ^10.0.0          # "Share this App" (WhatsApp etc.)
+  image_picker: ^1.1.2         # profile photo (system photo picker)
 
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.13.1
 
-# App icon → launcher icons for Android + iOS (run: dart run flutter_launcher_icons)
+# App icon → launcher icons (run: dart run flutter_launcher_icons)
+# ios: false for now — enable when you build for Apple (needs ios/ folder first)
 flutter_launcher_icons:
   android: true
-  ios: true
+  ios: false
   image_path: "assets/icon.png"
-  remove_alpha_ios: true
 
 flutter:
   uses-material-design: true
   assets:
     - assets/icon.png
+    - assets/icons/

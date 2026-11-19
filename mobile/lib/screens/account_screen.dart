@@ -1,11 +1,16 @@
 // account_screen.dart — login (phone OTP + demo Google) / account hub (dashboard,
-// register as provider, language, logout).
+// register as provider, profile, feedback, about, contact, share, language, logout).
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../core/i18n.dart';
 import '../main.dart';
+import 'about_screen.dart';
+import 'contact_screen.dart';
 import 'dashboard_screen.dart';
+import 'feedback_screen.dart';
+import 'profile_edit_screen.dart';
 import 'register_screen.dart';
 
 class AccountBody extends StatefulWidget {
@@ -162,12 +167,33 @@ class _AccountBodyState extends State<AccountBody> {
             Navigator.push(
                 context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
           }),
+          _menuTile(Icons.edit, t('edit_profile'), () {
+            Navigator.push(
+                context, MaterialPageRoute(builder: (_) => const ProfileEditScreen()));
+          }),
           _menuTile(Icons.language, langNotifier.value == 'hi' ? 'English' : 'हिंदी', _toggleLang),
           _menuTile(Icons.logout, t('logout'), _logout, color: const Color(0xFFDC2626)),
         ],
+        const SizedBox(height: 16),
+        // ── Common (login ke bina bhi) — web jaisa ────────────────────────
+        _menuTile(Icons.feedback, t('feedback_l'), () {
+          Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const FeedbackScreen()));
+        }),
+        _menuTile(Icons.info_outline, t('about_us'), () {
+          Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const AboutScreen()));
+        }),
+        _menuTile(Icons.mail_outline, t('contact_us'), () {
+          Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const ContactScreen()));
+        }),
+        _menuTile(Icons.share, t('share_app'), () {
+          Share.share('${t('share_text')} https://labors-near-me.onrender.com');
+        }),
         const SizedBox(height: 20),
         Center(
-          child: Text('Labors Near Me · v1.0.0',
+          child: Text('Labors Near Me · v1.1.0',
               style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
         ),
       ]),

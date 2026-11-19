@@ -181,10 +181,36 @@ function createApp() {
 
   // ── Static PWA (website + installable mobile app) ──────────────────────
   const webDir = path.join(__dirname, '..', '..', 'web');
-  app.use(express.static(webDir, { maxAge: '1h', index: 'index.html' }));
+  // ⚠️ Koi bhi file cache NA ho — warna naye features dikhne me der lagti hai
+  // (sirf icons/images thodi der cache ho sakti hain)
+  app.use(express.static(webDir, {
+    maxAge: 0,
+    index: false,
+    setHeaders: (res, filePath) => {
+      const isImage = /\.(png|jpg|jpeg|svg|webp|ico)$/i.test(filePath);
+      if (!isImage) {
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      }
+      if (filePath.endsWith('sw.js')) {
+        res.setHeader('Cache-Control', 'no-store');
+      }
+    },
+  }));
+
+  // 🔧 Purana SW apne aap uninstall ho jaye + cache saaf (self-destruct sw.js)
+  app.get('/sw.js', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(path.join(webDir, 'sw.js'));
+  });
 
   // SPA fallback for any non-API path
-  app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(webDir, 'index.html')));
+  const sendShell = (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.sendFile(path.join(webDir, 'index.html'));
+  };
+  app.get('/fresh', sendShell); // ← cache-free entry point (preview path me /fresh likho)
+  app.get('/v2', sendShell);
+  app.get(/^\/(?!api\/).*/, sendShell);
 
   // ── Errors ─────────────────────────────────────────────────────────────
   app.use((err, req, res, next) => {
@@ -443,6 +469,52 @@ module.exports = {
 };
 ````
 
+## 📄 `backend/src/states.js`
+
+````javascript
+// states.js — PAN India: 28 states + 8 UTs with districts (dropdown data)
+// Used in register/profile/search. Source: general administrative divisions of India.
+
+module.exports = [
+  { state: 'Andhra Pradesh', districts: ['Alluri Sitharama Raju', 'Anakapalli', 'Ananthapuramu', 'Annamayya', 'Bapatla', 'Chittoor', 'Dr. B.R. Ambedkar Konaseema', 'East Godavari', 'Eluru', 'Guntur', 'Kakinada', 'Krishna', 'Kurnool', 'Nandyal', 'NTR', 'Palnadu', 'Parvathipuram Manyam', 'Prakasam', 'Sri Potti Sriramulu Nellore', 'Sri Sathya Sai', 'Srikakulam', 'Tirupati', 'Visakhapatnam', 'Vizianagaram', 'West Godavari', 'YSR Kadapa'] },
+  { state: 'Arunachal Pradesh', districts: ['Anjaw', 'Changlang', 'Dibang Valley', 'East Kameng', 'East Siang', 'Kamle', 'Kra Daadi', 'Kurung Kumey', 'Lepa Rada', 'Lohit', 'Longding', 'Lower Dibang Valley', 'Lower Siang', 'Lower Subansiri', 'Namsai', 'Pakke Kessang', 'Papum Pare', 'Shi Yomi', 'Siang', 'Tawang', 'Tirap', 'Upper Siang', 'Upper Subansiri', 'West Kameng', 'West Siang'] },
+  { state: 'Assam', districts: ['Bajali', 'Baksa', 'Barpeta', 'Biswanath', 'Bongaigaon', 'Cachar', 'Charaideo', 'Chirang', 'Darrang', 'Dhemaji', 'Dhubri', 'Dibrugarh', 'Dima Hasao', 'Goalpara', 'Golaghat', 'Hailakandi', 'Hojai', 'Jorhat', 'Kamrup', 'Kamrup Metropolitan', 'Karbi Anglong', 'Karimganj', 'Kokrajhar', 'Lakhimpur', 'Majuli', 'Morigaon', 'Nagaon', 'Nalbari', 'Sivasagar', 'Sonitpur', 'South Salmara-Mankachar', 'Tinsukia', 'Udalguri', 'West Karbi Anglong'] },
+  { state: 'Bihar', districts: ['Araria', 'Arwal', 'Aurangabad', 'Banka', 'Begusarai', 'Bhagalpur', 'Bhojpur', 'Buxar', 'Darbhanga', 'Gaya', 'Gopalganj', 'Jamui', 'Jehanabad', 'Kaimur', 'Katihar', 'Khagaria', 'Kishanganj', 'Lakhisarai', 'Madhepura', 'Madhubani', 'Munger', 'Muzaffarpur', 'Nalanda', 'Nawada', 'Pashchim Champaran', 'Patna', 'Purbi Champaran', 'Purnia', 'Rohtas', 'Saharsa', 'Samastipur', 'Saran', 'Sheikhpura', 'Sheohar', 'Sitamarhi', 'Siwan', 'Supaul', 'Vaishali'] },
+  { state: 'Chhattisgarh', districts: ['Balod', 'Baloda Bazar', 'Balrampur-Ramanujganj', 'Bastar', 'Bemetara', 'Bijapur', 'Bilaspur', 'Dantewada', 'Dhamtari', 'Durg', 'Gariaband', 'Gaurela-Pendra-Marwahi', 'Janjgir-Champa', 'Jashpur', 'Kabirdham', 'Kanker', 'Khairagarh-Chhuikhadan-Gandai', 'Kondagaon', 'Korba', 'Koriya', 'Mahasamund', 'Manendragarh-Chirmiri-Bharatpur', 'Mohla-Manpur-Ambagarh Chowki', 'Mungeli', 'Narayanpur', 'Raigarh', 'Raipur', 'Rajnandgaon', 'Sarangarh-Bilaigarh', 'Sukma', 'Surajpur', 'Surguja'] },
+  { state: 'Goa', districts: ['North Goa', 'South Goa'] },
+  { state: 'Gujarat', districts: ['Ahmedabad', 'Amreli', 'Anand', 'Aravalli', 'Banaskantha', 'Bharuch', 'Bhavnagar', 'Botad', 'Chhota Udepur', 'Dahod', 'Dang', 'Devbhoomi Dwarka', 'Gandhinagar', 'Gir Somnath', 'Jamnagar', 'Junagadh', 'Kheda', 'Kutch', 'Mahisagar', 'Mehsana', 'Morbi', 'Narmada', 'Navsari', 'Panchmahal', 'Patan', 'Porbandar', 'Rajkot', 'Sabarkantha', 'Surat', 'Surendranagar', 'Tapi', 'Vadodara', 'Valsad'] },
+  { state: 'Haryana', districts: ['Ambala', 'Bhiwani', 'Charkhi Dadri', 'Faridabad', 'Fatehabad', 'Gurugram', 'Hisar', 'Jhajjar', 'Jind', 'Kaithal', 'Karnal', 'Kurukshetra', 'Mahendragarh', 'Nuh', 'Palwal', 'Panchkula', 'Panipat', 'Rewari', 'Rohtak', 'Sirsa', 'Sonipat', 'Yamunanagar'] },
+  { state: 'Himachal Pradesh', districts: ['Bilaspur', 'Chamba', 'Hamirpur', 'Kangra', 'Kinnaur', 'Kullu', 'Lahaul and Spiti', 'Mandi', 'Shimla', 'Sirmaur', 'Solan', 'Una'] },
+  { state: 'Jharkhand', districts: ['Bokaro', 'Chatra', 'Deoghar', 'Dhanbad', 'Dumka', 'East Singhbhum', 'Garhwa', 'Giridih', 'Godda', 'Gumla', 'Hazaribagh', 'Jamtara', 'Khunti', 'Koderma', 'Latehar', 'Lohardaga', 'Pakur', 'Palamu', 'Ramgarh', 'Ranchi', 'Sahibganj', 'Seraikela-Kharsawan', 'Simdega', 'West Singhbhum'] },
+  { state: 'Karnataka', districts: ['Bagalkote', 'Ballari', 'Belagavi', 'Bengaluru Rural', 'Bengaluru Urban', 'Bidar', 'Chamarajanagar', 'Chikkaballapura', 'Chikkamagaluru', 'Chitradurga', 'Dakshina Kannada', 'Davanagere', 'Dharwad', 'Gadag', 'Hassan', 'Haveri', 'Kalaburagi', 'Kodagu', 'Kolar', 'Koppal', 'Mandya', 'Mysuru', 'Raichur', 'Ramanagara', 'Shivamogga', 'Tumakuru', 'Udupi', 'Uttara Kannada', 'Vijayanagara', 'Vijayapura', 'Yadgir'] },
+  { state: 'Kerala', districts: ['Alappuzha', 'Ernakulam', 'Idukki', 'Kannur', 'Kasaragod', 'Kollam', 'Kottayam', 'Kozhikode', 'Malappuram', 'Palakkad', 'Pathanamthitta', 'Thiruvananthapuram', 'Thrissur', 'Wayanad'] },
+  { state: 'Madhya Pradesh', districts: ['Alirajpur', 'Anuppur', 'Ashoknagar', 'Balaghat', 'Barwani', 'Betul', 'Bhind', 'Bhopal', 'Burhanpur', 'Chhatarpur', 'Chhindwara', 'Damoh', 'Datia', 'Dewas', 'Dhar', 'Dindori', 'Guna', 'Gwalior', 'Harda', 'Indore', 'Jabalpur', 'Jhabua', 'Katni', 'Khandwa', 'Khargone', 'Maheshwar', 'Maihar', 'Mandla', 'Mandsaur', 'Morena', 'Nagda', 'Narmadapuram', 'Narsinghpur', 'Neemuch', 'Pandhurna', 'Panna', 'Raisen', 'Rajgarh', 'Ratlam', 'Rewa', 'Sagar', 'Satna', 'Sehore', 'Seoni', 'Shahdol', 'Shajapur', 'Sheopur', 'Shivpuri', 'Sidhi', 'Singrauli', 'Tikamgarh', 'Ujjain', 'Umaria', 'Vidisha'] },
+  { state: 'Maharashtra', districts: ['Ahmednagar', 'Akola', 'Amravati', 'Beed', 'Bhandara', 'Buldhana', 'Chandrapur', 'Dhule', 'Gadchiroli', 'Gondia', 'Hingoli', 'Jalgaon', 'Jalna', 'Kolhapur', 'Latur', 'Mumbai City', 'Mumbai Suburban', 'Nagpur', 'Nanded', 'Nandurbar', 'Nashik', 'Osmanabad', 'Palghar', 'Parbhani', 'Pune', 'Raigad', 'Ratnagiri', 'Sangli', 'Satara', 'Sindhudurg', 'Solapur', 'Thane', 'Wardha', 'Washim', 'Yavatmal'] },
+  { state: 'Manipur', districts: ['Bishnupur', 'Chandel', 'Churachandpur', 'Imphal East', 'Imphal West', 'Jiribam', 'Kakching', 'Kamjong', 'Kangpokpi', 'Noney', 'Pherzawl', 'Senapati', 'Tamenglong', 'Tengnoupal', 'Thoubal', 'Ukhrul'] },
+  { state: 'Meghalaya', districts: ['East Garo Hills', 'East Jaintia Hills', 'East Khasi Hills', 'North Garo Hills', 'Ri-Bhoi', 'South Garo Hills', 'South West Garo Hills', 'South West Khasi Hills', 'West Garo Hills', 'West Jaintia Hills', 'West Khasi Hills'] },
+  { state: 'Mizoram', districts: ['Aizawl', 'Champhai', 'Hnahthial', 'Khawzawl', 'Kolasib', 'Lawngtlai', 'Lunglei', 'Mamit', 'Saiha', 'Saitual', 'Serchhip'] },
+  { state: 'Nagaland', districts: ['Chümoukedima', 'Dimapur', 'Kiphire', 'Kohima', 'Longleng', 'Mokokchung', 'Mon', 'Niuland', 'Noklak', 'Peren', 'Phek', 'Shamator', 'Tseminyü', 'Tuensang', 'Wokha', 'Zunheboto'] },
+  { state: 'Odisha', districts: ['Angul', 'Balangir', 'Baleshwar', 'Bargarh', 'Bhadrak', 'Boudh', 'Cuttack', 'Deogarh', 'Dhenkanal', 'Gajapati', 'Ganjam', 'Jagatsinghpur', 'Jajpur', 'Jharsuguda', 'Kalahandi', 'Kandhamal', 'Kendrapara', 'Kendujhar', 'Khordha', 'Koraput', 'Malkangiri', 'Mayurbhanj', 'Nabarangpur', 'Nayagarh', 'Nuapada', 'Puri', 'Rayagada', 'Sambalpur', 'Sonepur', 'Sundargarh'] },
+  { state: 'Punjab', districts: ['Amritsar', 'Barnala', 'Bathinda', 'Faridkot', 'Fatehgarh Sahib', 'Fazilka', 'Ferozepur', 'Gurdaspur', 'Hoshiarpur', 'Jalandhar', 'Kapurthala', 'Ludhiana', 'Malerkotla', 'Mansa', 'Moga', 'Muktsar', 'Pathankot', 'Patiala', 'Rupnagar', 'S.A.S. Nagar', 'Sangrur', 'Shaheed Bhagat Singh Nagar', 'Tarn Taran'] },
+  { state: 'Rajasthan', districts: ['Ajmer', 'Alwar', 'Banswara', 'Baran', 'Barmer', 'Bharatpur', 'Bhilwara', 'Bikaner', 'Bundi', 'Chittorgarh', 'Churu', 'Dausa', 'Dholpur', 'Dungarpur', 'Hanumangarh', 'Jaipur', 'Jaisalmer', 'Jalore', 'Jhalawar', 'Jhunjhunu', 'Jodhpur', 'Karauli', 'Kota', 'Nagaur', 'Pali', 'Pratapgarh', 'Rajsamand', 'Sawai Madhopur', 'Sikar', 'Sirohi', 'Sri Ganganagar', 'Tonk', 'Udaipur'] },
+  { state: 'Sikkim', districts: ['Gangtok', 'Gyalshing', 'Mangan', 'Namchi', 'Pakyong', 'Soreng'] },
+  { state: 'Tamil Nadu', districts: ['Ariyalur', 'Chengalpattu', 'Chennai', 'Coimbatore', 'Cuddalore', 'Dharmapuri', 'Dindigul', 'Erode', 'Kallakurichi', 'Kancheepuram', 'Karur', 'Krishnagiri', 'Madurai', 'Mayiladuthurai', 'Nagapattinam', 'Namakkal', 'Nilgiris', 'Perambalur', 'Pudukkottai', 'Ramanathapuram', 'Ranipet', 'Salem', 'Sivaganga', 'Tenkasi', 'Thanjavur', 'Theni', 'Thoothukudi', 'Tiruchirappalli', 'Tirunelveli', 'Tirupattur', 'Tiruppur', 'Tiruvallur', 'Tiruvannamalai', 'Tiruvarur', 'Vellore', 'Viluppuram', 'Virudhunagar'] },
+  { state: 'Telangana', districts: ['Adilabad', 'Bhadradri Kothagudem', 'Hanumakonda', 'Hyderabad', 'Jagtial', 'Jangaon', 'Jayashankar Bhupalpally', 'Jogulamba Gadwal', 'Kamareddy', 'Karimnagar', 'Khammam', 'Komaram Bheem Asifabad', 'Mahabubabad', 'Mahabubnagar', 'Mancherial', 'Medak', 'Medchal–Malkajgiri', 'Mulugu', 'Nagarkurnool', 'Nalgonda', 'Narayanpet', 'Nirmal', 'Nizamabad', 'Peddapalli', 'Rajanna Sircilla', 'Rangareddy', 'Sangareddy', 'Siddipet', 'Suryapet', 'Vikarabad', 'Wanaparthy', 'Warangal', 'Yadadri Bhuvanagiri'] },
+  { state: 'Tripura', districts: ['Dhalai', 'Gomati', 'Khowai', 'North Tripura', 'Sepahijala', 'South Tripura', 'Unakoti', 'West Tripura'] },
+  { state: 'Uttar Pradesh', districts: ['Agra', 'Aligarh', 'Ambedkar Nagar', 'Amethi', 'Amroha', 'Auraiya', 'Ayodhya', 'Azamgarh', 'Baghpat', 'Bahraich', 'Ballia', 'Balrampur', 'Banda', 'Barabanki', 'Bareilly', 'Basti', 'Bhadohi', 'Bijnor', 'Budaun', 'Bulandshahr', 'Chandauli', 'Chitrakoot', 'Deoria', 'Etah', 'Etawah', 'Farrukhabad', 'Fatehpur', 'Firozabad', 'Gautam Buddh Nagar', 'Ghaziabad', 'Ghazipur', 'Gonda', 'Gorakhpur', 'Hamirpur', 'Hapur', 'Hardoi', 'Hathras', 'Jalaun', 'Jaunpur', 'Jhansi', 'Kannauj', 'Kanpur Dehat', 'Kanpur Nagar', 'Kasganj', 'Kaushambi', 'Kushinagar', 'Lakhimpur Kheri', 'Lalitpur', 'Lucknow', 'Maharajganj', 'Mahoba', 'Mainpuri', 'Mathura', 'Mau', 'Meerut', 'Mirzapur', 'Moradabad', 'Muzaffarnagar', 'Pilibhit', 'Pratapgarh', 'Prayagraj', 'Raebareli', 'Rampur', 'Saharanpur', 'Sambhal', 'Sant Kabir Nagar', 'Shahjahanpur', 'Shamli', 'Shravasti', 'Siddharthnagar', 'Sitapur', 'Sonbhadra', 'Sultanpur', 'Unnao', 'Varanasi'] },
+  { state: 'Uttarakhand', districts: ['Almora', 'Bageshwar', 'Chamoli', 'Champawat', 'Dehradun', 'Haridwar', 'Nainital', 'Pauri Garhwal', 'Pithoragarh', 'Rudraprayag', 'Tehri Garhwal', 'Udham Singh Nagar', 'Uttarkashi'] },
+  { state: 'West Bengal', districts: ['Alipurduar', 'Bankura', 'Birbhum', 'Cooch Behar', 'Dakshin Dinajpur', 'Darjeeling', 'Hooghly', 'Howrah', 'Jalpaiguri', 'Jhargram', 'Kalimpong', 'Kolkata', 'Malda', 'Murshidabad', 'Nadia', 'North 24 Parganas', 'Paschim Bardhaman', 'Paschim Medinipur', 'Purba Bardhaman', 'Purba Medinipur', 'Purulia', 'South 24 Parganas', 'Uttar Dinajpur'] },
+  { state: 'Andaman and Nicobar Islands (UT)', districts: ['Nicobar', 'North and Middle Andaman', 'South Andaman'] },
+  { state: 'Chandigarh (UT)', districts: ['Chandigarh'] },
+  { state: 'Dadra and Nagar Haveli and Daman and Diu (UT)', districts: ['Dadra and Nagar Haveli', 'Daman', 'Diu'] },
+  { state: 'Delhi (NCT)', districts: ['Central Delhi', 'East Delhi', 'New Delhi', 'North Delhi', 'North East Delhi', 'North West Delhi', 'Shahdara', 'South Delhi', 'South East Delhi', 'South West Delhi', 'West Delhi'] },
+  { state: 'Jammu and Kashmir (UT)', districts: ['Anantnag', 'Bandipora', 'Baramulla', 'Budgam', 'Doda', 'Ganderbal', 'Jammu', 'Kathua', 'Kishtwar', 'Kulgam', 'Kupwara', 'Poonch', 'Pulwama', 'Rajouri', 'Ramban', 'Reasi', 'Samba', 'Shopian', 'Srinagar', 'Udhampur'] },
+  { state: 'Ladakh (UT)', districts: ['Kargil', 'Leh'] },
+  { state: 'Lakshadweep (UT)', districts: ['Lakshadweep'] },
+  { state: 'Puducherry (UT)', districts: ['Karaikal', 'Mahe', 'Puducherry', 'Yanam'] }
+];
+````
+
 ## 📄 `backend/src/seed.js`
 
 ````javascript
@@ -464,7 +536,7 @@ const CATEGORIES = [
       { id: 'civil', name_en: 'Civil Engineer', name_hi: 'सिविल इंजीनियर' },
       { id: 'site-supervisor', name_en: 'Site Supervisor', name_hi: 'साइट सुपरवाइजर' },
       { id: 'estimation', name_en: 'Estimation / Drawing', name_hi: 'एस्टीमेट / ड्राइंग' } ] },
-  { id: 'tailor', name_en: 'Tailor', name_hi: 'दर्जी', icon: 'scissors', order: 3, active: true,
+  { id: 'tailor', name_en: 'Tailor', name_hi: 'दर्जी', icon: 'shirt', iconImage: '/icons/cat-tailor-white.png', order: 3, active: true,
     subcategories: [
       { id: 'blouse-suit', name_en: 'Blouse / Suit Stitching', name_hi: 'ब्लाउज / सूट सिलाई' },
       { id: 'alteration', name_en: 'Alteration', name_hi: 'अल्टरेशन' },
@@ -519,7 +591,7 @@ const CATEGORIES = [
       { id: 'screen-battery', name_en: 'Screen / Battery', name_hi: 'स्क्रीन / बैटरी' },
       { id: 'software', name_en: 'Software / Update', name_hi: 'सॉफ्टवेयर / अपडेट' },
       { id: 'accessories', name_en: 'Accessories / Charging', name_hi: 'एक्सेसरीज़ / चार्जिंग' } ] },
-  { id: 'beautician', name_en: 'Beautician at Home', name_hi: 'ब्यूटीशियन (घर पर)', icon: 'comb', order: 14, active: true,
+  { id: 'beautician', name_en: 'Beautician at Home', name_hi: 'ब्यूटीशियन (घर पर)', icon: 'scissors', iconImage: '/icons/cat-beautician-white.png', order: 14, active: true,
     subcategories: [
       { id: 'bridal', name_en: 'Bridal Makeup', name_hi: 'दुल्हन मेकअप' },
       { id: 'salon-home', name_en: 'Salon at Home', name_hi: 'घर पर सैलून' },
@@ -534,6 +606,17 @@ const CATEGORIES = [
       { id: 'garden-care', name_en: 'Garden Care', name_hi: 'बगीचा देखभाल' },
       { id: 'plants', name_en: 'Indoor Plants', name_hi: 'इनडोर प्लांट' },
       { id: 'lawn', name_en: 'Lawn / Tree Trim', name_hi: 'लॉन / पेड़ कटाई' } ] },
+  { id: 'medical', name_en: 'Medical Services', name_hi: 'मेडिकल सर्विसेज़', icon: 'medical', iconImage: '/icons/cat-medical-white.png', order: 17, active: true,
+    subcategories: [
+      { id: 'doctor', name_en: 'Doctor / Clinic', name_hi: 'डॉक्टर / क्लिनिक' },
+      { id: 'nurse', name_en: 'Nurse / Attendant', name_hi: 'नर्स / अटेंडेंट' },
+      { id: 'pharmacy', name_en: 'Medical Store / Pharmacy', name_hi: 'मेडिकल स्टोर / फार्मेसी' },
+      { id: 'lab-test', name_en: 'Lab / X-Ray / Test', name_hi: 'लैब / एक्स-रे / टेस्ट' },
+      { id: 'physio', name_en: 'Physiotherapy', name_hi: 'फिजियोथेरेपी' } ] },
+  { id: 'others', name_en: 'Other Services', name_hi: 'अन्य सेवाएँ', icon: 'toolbox', order: 18, active: true,
+    customAllowed: true, // ← provider apni service ka naam khud likh sakta hai (customService field)
+    subcategories: [
+      { id: 'custom', name_en: 'Custom Service (type your own)', name_hi: 'अपनी सेवा लिखें' } ] },
 ];
 
 const CITIES = [
@@ -547,6 +630,9 @@ const CITIES = [
   { id: 'surat', name_en: 'Surat', name_hi: 'सूरत', state: 'Gujarat', lat: 21.1702, lng: 72.8311 },
   { id: 'ahmedabad', name_en: 'Ahmedabad', name_hi: 'अहमदाबाद', state: 'Gujarat', lat: 23.0225, lng: 72.5714 },
   { id: 'varanasi', name_en: 'Varanasi', name_hi: 'वाराणसी', state: 'Uttar Pradesh', lat: 25.3176, lng: 82.9739 },
+  { id: 'raipur', name_en: 'Raipur', name_hi: 'रायपुर', state: 'Chhattisgarh', lat: 21.2514, lng: 81.6296 },
+  { id: 'bhilai', name_en: 'Bhilai', name_hi: 'भिलाई', state: 'Chhattisgarh', lat: 21.1938, lng: 81.3509 },
+  { id: 'bilaspur', name_en: 'Bilaspur', name_hi: 'बिलासपुर', state: 'Chhattisgarh', lat: 22.0797, lng: 82.1409 },
 ];
 
 /** Compact provider tuple → full record.
@@ -559,11 +645,14 @@ const P = (t) => {
     id: 'prv_' + businessName.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14) + '_' + cityId.slice(0, 3),
     userId: userId || null,
     name, businessName, categoryId, subcategory,
+    customService: '',           // 'others' category me provider apni service ka naam likhta hai
     phone, whatsapp: phone,
     photo: null, // null → UI renders a low-bandwidth SVG monogram avatar
+    gallery: [],                 // kaam ki photos (data-URL, max 6) — provider dashboard se upload
+    videoLinks: [],              // YouTube links [{url, videoId}] — max 5
     about, skills,
     priceHint,
-    address: { line1: area + ', ' + city.name_en, area, city: city.name_en, cityId, state: city.state, pincode },
+    address: { line1: area + ', ' + city.name_en, area, city: city.name_en, cityId, state: city.state, district: '', pincode },
     location: { lat: +(city.lat + dLat).toFixed(6), lng: +(city.lng + dLng).toFixed(6) },
     availability: { manualOpen: true, hours: { open: hours.open, close: hours.close }, offDays: hours.offDays },
     verified,
@@ -697,6 +786,24 @@ function buildProviders() {
     P(['Naresh Solanki', 'Solanki Driver Seva', 'driver', 'taxi', '9826091206', 'ahmedabad', 'Satellite', '380015', -0.005, -0.009, 'Ahmedabad local & outstation taxi. Airport drop ₹500.', ['Taxi', 'Airport', 'Outstation'], '₹700/day', 4.4, 33, 'self', 'verified', 'u_nareshs']),
     P(['Ravi Shankar', 'Shankar Tailor & Boutique', 'tailor', 'boutique', '9826101205', 'varanasi', 'Godowlia', '221001', 0.003, -0.002, 'Banarasi saree blouse, kurta, suit. Ghat area me 25 saal se.', ['Blouse', 'Kurta', 'Banarasi'], '₹200 onwards', 4.6, 41, 'admin', 'verified']),
     P(['Dinesh Prajapati', 'Prajapati Electricals Lanka', 'electrician', 'fan-inverter', '9826101206', 'varanasi', 'Lanka', '221005', -0.006, -0.007, 'Pankha, inverter, cooler, wiring — Lanka BHU area service.', ['Fan', 'Inverter', 'Wiring'], '₹180 visit', 4.3, 24, 'self', 'pending', 'u_dineshp']),
+
+    // ─── CHHATTISGARH — Raipur / Bhilai / Bilaspur ──────────────────────────
+    P(['Ramesh Sahu', 'Sahu Electricals Raipur', 'electrician', 'house-wiring', '9827410001', 'raipur', 'Pandri, Main Road', '492004', 0.006, -0.008, 'Ghar ki wiring, MCB, inverter, fan fitting — 15 saal ka anubhav. Pandri-Shankar Nagar area.', ['House wiring', 'MCB', 'Inverter'], '₹200 visit', 4.6, 52, 'admin', 'verified']),
+    P(['Suresh Chandrakar', 'Chandrakar Raj Mistri Karyalaya', 'raj-mistri', 'brickwork', '9827410002', 'raipur', 'Tatibandh', '492099', -0.012, 0.010, 'Makan, deewar, plaster, tiles — mazdoor team ke saath. Loan construction bhi.', ['Brickwork', 'Plaster', 'Tiles'], '₹450/day per mazdoor', 4.7, 61, 'admin', 'verified']),
+    P(['Anita Yadav', 'Yadav Beauty Parlour (Ghar Par)', 'beautician', 'salon-home', '9827410003', 'raipur', 'Devendra Nagar', '492001', 0.010, 0.005, 'Bridal makeup, facial, mehndi, haircut — ghar par service. Ladies only team.', ['Bridal', 'Facial', 'Mehndi'], '₹300 onwards', 4.8, 74, 'self', 'verified', 'u_anitay']),
+    P(['Mohammad Irfan', 'Irfan AC & Fridge Care', 'ac-fridge-repair', 'ac-repair', '9827410004', 'raipur', 'Byron Bazar', '492001', 0.003, -0.004, 'AC gas filling, service, fridge, washing machine — all brands. Same-day service.', ['AC service', 'Gas filling', 'Fridge'], '₹350 service', 4.4, 39, 'admin', 'verified']),
+    P(['Dr. Sushma Tiwari', 'Tiwari Home Clinic', 'medical', 'doctor', '9827410005', 'raipur', 'Shankar Nagar', '492007', 0.008, 0.012, 'MBBS, MD — general physician. Ghar par consultation, BP-sugar check, home visit available.', ['General physician', 'Home visit', 'BP/Sugar'], '₹400 consultation', 4.9, 88, 'admin', 'verified']),
+    {...P(['Vikas Kosre', 'Kosre RO & Water Care', 'others', 'custom', '9827410006', 'raipur', 'Mowa', '492014', -0.009, -0.011, 'RO water purifier repair, service, AMC. Sabhi brands — Kent, Aquaguard, Pureit.', ['RO repair', 'RO service', 'AMC'], '₹250 visit', 4.5, 33, 'self', 'verified', 'u_vikask']), customService: 'RO Water Purifier Repair'},
+
+    P(['Dilip Banjare', 'Banjare Plumbing Works', 'plumber', 'tap-leak', '9827420001', 'bhilai', 'Sector 6', '490006', 0.005, 0.007, 'Nal, leak, motor, bathroom fitting — Sector 1-12 area. Emergency 30 min me.', ['Leak repair', 'Bathroom fitting', 'Motor'], '₹200 visit', 4.5, 42, 'admin', 'verified']),
+    P(['Kavita Sahu', 'Sahu Tiffin & Rasoi', 'cook', 'tiffin', '9827420002', 'bhilai', 'Sector 10', '490006', 0.002, -0.005, 'Ghar jaisa khana — tiffin service, party cooking. Monthly pack available.', ['Tiffin', 'Home food', 'Party cook'], '₹70/thali', 4.7, 58, 'self', 'verified', 'u_kavitas']),
+    P(['Rajesh Verma', 'Verma Furniture House', 'carpenter', 'furniture', '9827420003', 'bhilai', 'Supela', '490023', -0.010, 0.004, 'Beds, almari, sofa, mandir, modular kitchen — teak & plywood. 10 saal warranty.', ['Furniture', 'Modular kitchen', 'Doors'], 'Quote on visit', 4.6, 47, 'admin', 'verified']),
+    P(['Sunil Nishad', 'Nishad Driver Seva', 'driver', 'personal-driver', '9827420004', 'bhilai', 'Hudco', '490009', 0.008, -0.002, 'Personal driver, outstation Raipur-Bhilai-Nagpur. Night drive OK. 8 saal experience.', ['Personal driver', 'Outstation', 'Airport drop'], '₹600/day', 4.3, 27, 'self', 'verified', 'u_suniln', { open: '00:00', close: '23:59', offDays: [] }]),
+
+    P(['Arun Tigga', 'Tigga Electric Works', 'electrician', 'electrical-repair', '9827430001', 'bilaspur', 'Sarkanda', '495004', 0.007, -0.006, 'Bijali repair, wiring, inverter, cooler — Sarkanda-Gandhi Chowk area. Fast service.', ['Repair', 'Wiring', 'Inverter'], '₹180 visit', 4.4, 31, 'admin', 'verified']),
+    P(['Pradeep Rathi', 'Rathi Tailor & Collection', 'tailor', 'blouse-suit', '9827430002', 'bilaspur', 'Juna Bilaspur', '495001', -0.004, 0.003, 'Blouse, suit, kurti, punjabi coat — ladies & gents tailoring. 24 ghante delivery option.', ['Blouse', 'Suit', 'Coat'], '₹150 onwards', 4.5, 36, 'admin', 'verified']),
+    P(['Ghanashyam Miri', 'Miri Safai Kendra', 'safai-karamchari', 'deep-clean', '9827430003', 'bilaspur', 'Vyapar Vihar', '495001', 0.004, 0.008, 'Ghar, office, tank, nali ki safai. Deep cleaning team — booking advance.', ['Deep cleaning', 'Water tank', 'Office'], '₹1200/day team', 4.2, 18, 'self', 'verified', 'u_ghanashyam']),
+    {...P(['Shivkumar Baghel', 'Baghel Mobile & Electronics', 'mobile-repair', 'screen-battery', '9827430004', 'bilaspur', 'Torwa', '495001', -0.007, -0.009, 'Mobile screen, battery, software — sabhi brands. Accessories bhi available.', ['Screen', 'Battery', 'Software'], '₹300 onwards', 4.4, 29, 'admin', 'verified']), customService: '', gallery: [], videoLinks: []},
   ];
   // ensure stable ids even when business names collide across cities
   const seen = new Map();
@@ -752,6 +859,14 @@ const REVIEWS = [
 
 function buildSeed() {
   const providers = buildProviders();
+  // 🪪 Demo: kuch providers Aadhaar-verified (trust badge demo ke liye)
+  ['painter', 'medical', 'beautician', 'tailor'].forEach((catId) => {
+    const p = providers.find((x) => x.categoryId === catId);
+    if (p) {
+      p.aadhaarVerified = true;
+      p.aadhaar = { masked: 'XXXX XXXX 0124', status: 'verified', verifiedAt: '2026-09-20T10:00:00.000Z' };
+    }
+  });
   const users = [
     { id: 'u_admin', phone: '9000000001', name: 'Platform Admin', role: 'admin', cityId: 'indore', createdAt: '2026-08-01T09:00:00.000Z' },
     { id: 'u_demo', phone: '9000000002', name: 'Amit Sharma', role: 'user', cityId: 'indore', createdAt: '2026-08-10T09:00:00.000Z' },
@@ -818,6 +933,9 @@ const router = express.Router();
 function publicProvider(p, db, origin) {
   const cat = db.categories.find((c) => c.id === p.categoryId) || {};
   const sub = (cat.subcategories || []).find((s) => s.id === p.subcategory) || {};
+  // 🪪 Aadhaar badge — sirf true/false; number public API me kabhi nahi jata
+  const owner = p.userId ? db.users.find((u) => u.id === p.userId) : null;
+  const aadhaarVerified = p.aadhaarVerified === true || !!((owner || {}).aadhaar && owner.aadhaar.status === 'verified');
   return {
     id: p.id,
     name: p.name,
@@ -827,17 +945,57 @@ function publicProvider(p, db, origin) {
     subcategory: p.subcategory,
     subcategoryNameEn: sub.name_en || '', subcategoryNameHi: sub.name_hi || '',
     categoryIcon: cat.icon || 'wrench',
+    categoryIconImage: cat.iconImage || '',
     phone: p.phone, whatsapp: p.whatsapp,
     photo: p.photo,
+    customService: p.customService || '',
+    gallery: p.gallery || [],        // 📸 kaam/store ki photos
+    videoLinks: p.videoLinks || [],  // 🎥 YouTube links
     about: p.about, skills: p.skills, priceHint: p.priceHint,
     address: p.address, location: p.location,
     availability: p.availability,
     isOpenNow: isOpenNow(p.availability),
     verified: p.verified,
+    aadhaarVerified,
+    status: p.status || 'active',
     ratingAvg: p.ratingAvg, ratingCount: p.ratingCount,
     languages: p.languages,
   };
 }
+
+// GET /api/states — PAN India states + districts (register/profile dropdowns)
+const STATES = require('../states');
+router.get('/states', (req, res) => res.json(STATES));
+
+// POST /api/feedback — app feedback (customer/provider/koi bhi) — login optional
+// Purpose: app me sudhar ke liye suggestions/complaints collect karna
+router.post('/feedback', (req, res) => {
+  const db = load();
+  const b = req.body || {};
+  const message = String(b.message || '').trim();
+  if (message.length < 5) return res.status(400).json({ error: 'message_required', hint: 'Thoda detail me likho (kam se kam 5 akshar)' });
+  // optional login: agar token hai to userId attach ho jayega (niche middleware se nahi — public route hai)
+  let userId = null;
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const session = token && db.sessions.find((s) => s.token === token);
+  if (session) userId = session.userId;
+  db.feedback = db.feedback || [];
+  db.feedback.unshift({
+    id: uid('fb'),
+    userId,
+    name: String(b.name || '').slice(0, 60),
+    contact: String(b.contact || '').slice(0, 80),
+    type: ['user', 'provider', 'other'].includes(b.type) ? b.type : 'user',
+    rating: Math.max(1, Math.min(5, Number(b.rating) || 5)),
+    message: message.slice(0, 1000),
+    status: 'new',
+    createdAt: new Date().toISOString(),
+  });
+  db.feedback = db.feedback.slice(0, 1000);
+  save();
+  res.status(201).json({ ok: true, message: 'Feedback mil gaya — shukriya! 🙏' });
+});
 
 // GET /api/categories — icon grid data (bilingual names + subcategories)
 router.get('/categories', (req, res) => {
@@ -878,7 +1036,7 @@ router.get('/providers/nearby', (req, res) => {
   }
 
   let rows = db.providers
-    .filter((p) => p.verified === 'verified') // seekers only see verified listings
+    .filter((p) => p.verified === 'verified' && (p.status || 'active') === 'active') // seekers only see verified + active listings
     .map((p) => {
       const d = haversineMetres(lat, lng, p.location.lat, p.location.lng);
       return { p, distance: d };
@@ -933,7 +1091,7 @@ router.get('/providers/:id', (req, res) => {
   const db = load();
   const p = db.providers.find((x) => x.id === req.params.id);
   if (!p) return res.status(404).json({ error: 'provider_not_found' });
-  if (p.verified !== 'verified') {
+  if (p.verified !== 'verified' || (p.status && p.status !== 'active')) {
     if (req.query.preview !== '1') return res.status(404).json({ error: 'provider_not_found' });
     // optional auth: only the owner or an admin may preview an unverified listing
     const header = req.headers.authorization || '';
@@ -1008,7 +1166,13 @@ const router = express.Router();
 const phoneOk = (p) => /^[6-9]\d{9}$/.test(String(p || ''));
 
 function publicUser(u) {
-  return { id: u.id, phone: u.phone, name: u.name, role: u.role, cityId: u.cityId };
+  return {
+    id: u.id, phone: u.phone, name: u.name, role: u.role, cityId: u.cityId,
+    state: u.state || '', district: u.district || '',
+    bio: u.bio || '', about: u.about || '', address: u.address || '',
+    photo: u.photo || null, googleEmail: u.googleEmail || '', status: u.status || 'active',
+    providerId: u.providerId || null,
+  };
 }
 
 /** Bearer-token middleware used by /me routes (exported for app.js). */
@@ -1020,6 +1184,10 @@ function requireAuth(req, res, next) {
   if (!session) return res.status(401).json({ error: 'unauthorized' });
   req.user = db.users.find((u) => u.id === session.userId);
   if (!req.user) return res.status(401).json({ error: 'unauthorized' });
+  // 🛡️ Moderation: suspended/blocked/deleted accounts cannot use the API
+  if (req.user.status && req.user.status !== 'active') {
+    return res.status(403).json({ error: 'account_' + req.user.status, hint: 'Aapka account admin ne ' + req.user.status + ' kiya hai. Support se sampark karein.' });
+  }
   next();
 }
 
@@ -1066,12 +1234,18 @@ router.post('/auth/verify-otp', (req, res) => {
       id: uid('u'), phone,
       name: String(req.body.name || '').slice(0, 60) || 'User ' + phone.slice(-4),
       role: 'user', cityId: String(req.body.cityId || 'indore'),
+      state: String(req.body.state || '').slice(0, 40),
+      district: String(req.body.district || '').slice(0, 60),
+      status: 'active',
+      bio: '', about: '', address: '', photo: null,
       createdAt: new Date().toISOString(),
     };
     db.users.push(user);
   } else if (req.body.name) {
     user.name = String(req.body.name).slice(0, 60);
   }
+  if (req.body.state) user.state = String(req.body.state).slice(0, 40);
+  if (req.body.district) user.district = String(req.body.district).slice(0, 60);
   const token = issueToken(db, user.id);
   save();
   res.json({ token, user: publicUser(user) });
@@ -1094,6 +1268,56 @@ router.post('/auth/google', (req, res) => {
   const token = issueToken(db, user.id);
   save();
   res.json({ token, user: publicUser(user) });
+});
+
+// POST /api/auth/firebase  { idToken } — REAL Firebase Auth (Phone OTP ya Google se mila ID token)
+// Verify: Google Identity Toolkit REST (koi extra npm package nahi chahiye).
+// Agar FIREBASE_API_KEY set nahi hai to 501 — client demo mode me chalta hai.
+router.post('/auth/firebase', async (req, res) => {
+  const apiKey = process.env.FIREBASE_API_KEY;
+  if (!apiKey) return res.status(501).json({ error: 'firebase_not_configured', hint: 'FIREBASE_API_KEY env set karo (FIREBASE_SETUP_HINDI.md dekho)' });
+  const idToken = String(req.body.idToken || '');
+  if (!idToken) return res.status(400).json({ error: 'id_token_required' });
+  try {
+    const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + apiKey, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+    const j = await r.json();
+    const fb = j && j.users && j.users[0];
+    if (!fb) return res.status(401).json({ error: 'invalid_firebase_token' });
+
+    const phone = (fb.phoneNumber || '').replace(/\D/g, '').slice(-10) || '';
+    const email = (fb.email || '').toLowerCase() || '';
+    const db = load();
+    // priority: firebaseUid → phone → email
+    let user = (fb.localId && db.users.find((u) => u.firebaseUid === fb.localId))
+      || (phone && db.users.find((u) => u.phone === phone))
+      || (email && db.users.find((u) => u.googleEmail === email));
+    if (!user) {
+      user = {
+        id: uid('u'), phone,
+        name: String(req.body.name || fb.displayName || (phone ? 'User ' + phone.slice(-4) : email.split('@')[0])).slice(0, 60),
+        role: 'user', cityId: String(req.body.cityId || 'indore'),
+        state: String(req.body.state || '').slice(0, 40),
+        district: String(req.body.district || '').slice(0, 60),
+        googleEmail: email, firebaseUid: fb.localId,
+        status: 'active', bio: '', about: '', address: '', photo: null,
+        createdAt: new Date().toISOString(),
+      };
+      db.users.push(user);
+    } else {
+      if (!user.firebaseUid) user.firebaseUid = fb.localId;
+      if (!user.googleEmail && email) user.googleEmail = email;
+      if (!user.phone && phone) user.phone = phone;
+    }
+    const token = issueToken(db, user.id);
+    save();
+    res.json({ token, user: publicUser(user) });
+  } catch (e) {
+    console.error('[firebase] verify error', e.message);
+    res.status(502).json({ error: 'firebase_verify_failed' });
+  }
 });
 
 // GET /api/auth/me
@@ -1213,12 +1437,16 @@ router.post('/providers/:id/reviews', (req, res) => {
   res.status(201).json({ ok: true, ratingAvg: p.ratingAvg, ratingCount: p.ratingCount });
 });
 
-// POST /api/reports — flag a listing (moderation queue in admin panel)
+// POST /api/reports — flag a listing/user/review (moderation queue in admin panel)
 router.post('/reports', (req, res) => {
   const db = load();
   db.reports.unshift({
-    id: uid('rep'), providerId: String(req.body.providerId || ''),
-    userId: req.user.id, reason: String(req.body.reason || '').slice(0, 300),
+    id: uid('rep'),
+    targetType: ['provider', 'user', 'review'].includes(req.body.targetType) ? req.body.targetType : 'provider',
+    targetId: String(req.body.targetId || req.body.providerId || ''),
+    providerId: String(req.body.providerId || ''),
+    userId: req.user.id,
+    reason: String(req.body.reason || '').slice(0, 300),
     status: 'open', createdAt: new Date().toISOString(),
   });
   save();
@@ -1236,6 +1464,9 @@ router.post('/providers/register', (req, res) => {
   if (!b.name || !b.phone) return res.status(400).json({ error: 'name_and_phone_required' });
 
   const city = db.cities.find((c) => c.id === b.cityId) || db.cities.find((c) => c.id === 'indore');
+  // 'others' category → provider apni service ka naam khud likhta hai (customService)
+  const customService = cat.customAllowed ? String(b.customService || '').slice(0, 60) : '';
+  if (cat.customAllowed && !customService) return res.status(400).json({ error: 'custom_service_required', hint: 'Apni service ka naam likho (jaise: RO Water Purifier Repair)' });
   const provider = {
     id: uid('prv'),
     userId: req.user.id,
@@ -1243,6 +1474,7 @@ router.post('/providers/register', (req, res) => {
     businessName: String(b.businessName || b.name).slice(0, 80),
     categoryId: cat.id,
     subcategory: String(b.subcategory || (cat.subcategories[0] || {}).id || ''),
+    customService,
     phone: String(b.phone).replace(/\D/g, '').slice(-10),
     whatsapp: String(b.whatsapp || b.phone).replace(/\D/g, '').slice(-10),
     photo: typeof b.photo === 'string' && b.photo.startsWith('data:image') ? b.photo.slice(0, 400000) : null,
@@ -1254,6 +1486,7 @@ router.post('/providers/register', (req, res) => {
       area: String(b.area || '').slice(0, 60),
       city: city.name_en, cityId: city.id,
       state: String(b.state || city.state).slice(0, 40),
+      district: String(b.district || '').slice(0, 60),
       pincode: String(b.pincode || '').slice(0, 10),
     },
     location: {
@@ -1266,9 +1499,12 @@ router.post('/providers/register', (req, res) => {
       offDays: Array.isArray(b.offDays) ? b.offDays.map(Number) : [0],
     },
     verified: 'pending',           // ← admin must approve before it appears in search
+    status: 'active',              // moderation: active | suspended | blocked | deleted
     source: 'self',
     kycStatus: b.kycName ? 'submitted' : 'pending', // MVP stores KYC name only (doc upload = S3 in prod)
     kycName: String(b.kycName || '').slice(0, 80),
+    gallery: [],                   // 📸 kaam ki photos (max 6, data-URL) — neeche fill hote hain
+    videoLinks: [],                // 🎥 YouTube links (max 5) — neeche fill hote hain
     ratingAvg: 0, ratingCount: 0,
     languages: ['hi', 'en'],
     createdAt: new Date().toISOString(),
@@ -1280,9 +1516,89 @@ router.post('/providers/register', (req, res) => {
       if (url) { provider.photo = url; save(); }
     }).catch(() => {});
   }
+  // 📸🎥 Gallery (work photos) + YouTube videos register ke time bhi aa sakte hain
+  if (Array.isArray(b.gallery)) {
+    provider.gallery = b.gallery
+      .filter((g) => typeof g === 'string' && g.startsWith('data:image'))
+      .slice(0, 6).map((g) => g.slice(0, 300000));
+  }
+  if (Array.isArray(b.videoLinks)) {
+    provider.videoLinks = b.videoLinks.map(parseYoutube).filter(Boolean).slice(0, 5);
+  }
   if (req.user.role === 'user') req.user.role = 'provider';
+  req.user.providerId = provider.id;
   save();
   res.status(201).json({ ok: true, provider: { id: provider.id, verified: provider.verified }, message: 'Verification ke liye bhej diya gaya. Admin approve karte hi listing live hogi.' });
+});
+
+/* ─────────── YouTube link helper (validate + extract video id) ─────────── */
+function parseYoutube(url) {
+  const m = String(url || '').match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{6,20})/);
+  return m ? { url: String(url).slice(0, 200), videoId: m[1] } : null;
+}
+
+/* ───────────────────── USER PROFILE (name, bio, about, address) ────────── */
+// PUT /api/me/profile — service taker/provider dono apna profile edit karein
+router.put('/me/profile', (req, res) => {
+  const b = req.body || {};
+  const u = req.user;
+  if (b.name != null) u.name = String(b.name).slice(0, 60);
+  if (b.bio != null) u.bio = String(b.bio).slice(0, 200);
+  if (b.about != null) u.about = String(b.about).slice(0, 500);
+  if (b.address != null) u.address = String(b.address).slice(0, 200);
+  if (b.state != null) u.state = String(b.state).slice(0, 40);
+  if (b.district != null) u.district = String(b.district).slice(0, 60);
+  if (b.cityId != null && load().cities.find((c) => c.id === b.cityId)) u.cityId = String(b.cityId);
+  if (b.photo === null || (typeof b.photo === 'string' && b.photo.startsWith('data:image'))) {
+    u.photo = b.photo ? b.photo.slice(0, 200000) : null;
+  }
+  save();
+  res.json({ ok: true, user: publicUserLite(u) });
+});
+function publicUserLite(u) {
+  return { id: u.id, phone: u.phone, name: u.name, role: u.role, cityId: u.cityId, state: u.state || '', district: u.district || '', bio: u.bio || '', about: u.about || '', address: u.address || '', photo: u.photo || null };
+}
+
+/* ───────────── PROVIDER GALLERY (work/store photos) + YOUTUBE VIDEOS ───── */
+// POST /api/me/providers/:id/gallery  { photo: dataURL } — photo add (max 6)
+router.post('/me/providers/:id/gallery', (req, res) => {
+  const db = load();
+  const p = db.providers.find((x) => x.id === req.params.id);
+  if (!p) return res.status(404).json({ error: 'provider_not_found' });
+  if (p.userId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const photo = String(req.body.photo || '');
+  if (!photo.startsWith('data:image')) return res.status(400).json({ error: 'invalid_photo' });
+  p.gallery = p.gallery || [];
+  if (p.gallery.length >= 6) return res.status(400).json({ error: 'gallery_full', hint: 'Zyada se zyada 6 photos' });
+  p.gallery.push(photo.slice(0, 300000));
+  save();
+  res.status(201).json({ ok: true, count: p.gallery.length });
+});
+
+// DELETE /api/me/providers/:id/gallery/:idx — photo hatao
+router.delete('/me/providers/:id/gallery/:idx', (req, res) => {
+  const db = load();
+  const p = db.providers.find((x) => x.id === req.params.id);
+  if (!p) return res.status(404).json({ error: 'provider_not_found' });
+  if (p.userId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const idx = Number(req.params.idx);
+  if (p.gallery && idx >= 0 && idx < p.gallery.length) p.gallery.splice(idx, 1);
+  save();
+  res.json({ ok: true, count: (p.gallery || []).length });
+});
+
+// PUT /api/me/providers/:id/videos  { links: [youtube urls] } — max 5
+router.put('/me/providers/:id/videos', (req, res) => {
+  const db = load();
+  const p = db.providers.find((x) => x.id === req.params.id);
+  if (!p) return res.status(404).json({ error: 'provider_not_found' });
+  if (p.userId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const links = Array.isArray(req.body.links) ? req.body.links : [];
+  const parsed = links.map(parseYoutube).filter(Boolean).slice(0, 5);
+  if (links.length && !parsed.length) return res.status(400).json({ error: 'invalid_youtube_links', hint: 'Sahi YouTube link daalo (youtube.com/watch?v=... ya youtu.be/...)' });
+  p.videoLinks = parsed;
+  save();
+  res.json({ ok: true, videoLinks: parsed });
 });
 
 // GET /api/me/providers — provider dashboard: my listings (+ status)
@@ -1293,9 +1609,13 @@ router.get('/me/providers', (req, res) => {
     const leads = db.leads.filter((l) => l.providerId === p.id);
     return {
       id: p.id, name: p.name, businessName: p.businessName, categoryId: p.categoryId,
-      verified: p.verified, ratingAvg: p.ratingAvg, ratingCount: p.ratingCount,
+      customService: p.customService || '',
+      verified: p.verified, status: p.status || 'active',
+      ratingAvg: p.ratingAvg, ratingCount: p.ratingCount,
       availability: p.availability, isOpenNow: isOpenNow(p.availability),
       leadCount: leads.length,
+      galleryCount: (p.gallery || []).length,
+      videoLinks: p.videoLinks || [],
       phone: p.phone, address: p.address,
     };
   }));
@@ -1318,12 +1638,16 @@ router.put('/providers/:id', (req, res) => {
   ['name', 'businessName', 'about', 'priceHint', 'phone'].forEach((k) => {
     if (b[k] != null) p[k] = String(b[k]).slice(0, 500);
   });
+  if (b.customService !== undefined) p.customService = String(b.customService || '').slice(0, 60);
   if (b.whatsapp) p.whatsapp = String(b.whatsapp).replace(/\D/g, '').slice(-10);
   if (b.photo === null || (typeof b.photo === 'string' && b.photo.startsWith('data:image'))) p.photo = b.photo ? b.photo.slice(0, 400000) : null;
   if (Array.isArray(b.skills)) p.skills = b.skills.slice(0, 8).map(String);
   if (b.address) p.address.line1 = String(b.address).slice(0, 120);
   if (b.area) p.address.area = String(b.area).slice(0, 60);
+  if (b.state) p.address.state = String(b.state).slice(0, 40);
+  if (b.district !== undefined) p.address.district = String(b.district || '').slice(0, 60);
   if (b.pincode) p.address.pincode = String(b.pincode).slice(0, 10);
+  if (Array.isArray(b.videoLinks)) p.videoLinks = b.videoLinks.map(parseYoutube).filter(Boolean).slice(0, 5);
   if (Number.isFinite(Number(b.lat))) p.location.lat = Number(b.lat);
   if (Number.isFinite(Number(b.lng))) p.location.lng = Number(b.lng);
   if (b.open || b.close) {
@@ -1343,6 +1667,48 @@ router.post('/providers/:id/availability', (req, res) => {
   p.availability.manualOpen = req.body.open === undefined ? !p.availability.manualOpen : !!req.body.open;
   save();
   res.json({ ok: true, manualOpen: p.availability.manualOpen });
+});
+
+
+/* ────────────────────── AADHAAR VERIFICATION (trust badge) ───────────────── */
+// Verhoeff checksum — asli Aadhaar numbers yahi algorithm (UIDAI) validate karte hain
+const VERH_D = [[0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],[5,9,8,7,6,0,4,3,2,1],[6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],[9,8,7,6,5,4,3,2,1,0]];
+const VERH_P = [[0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],[8,9,1,6,0,4,3,5,2,7],[9,4,5,3,1,2,6,8,7,0],[4,2,8,6,5,7,3,9,0,1],[2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8]];
+function verhoeffValid(num) {
+  let c = 0;
+  const digs = num.split('').map(Number).reverse();
+  for (let i = 0; i < digs.length; i++) c = VERH_D[c][VERH_P[i % 8][digs[i]]];
+  return c === 0;
+}
+const maskAadhaar = (n) => 'XXXX XXXX ' + n.slice(-4);
+
+// 🪪 Apna aadhaar khud dekh sakte ho — kisi aur ka kabhi nahi (public API sirf badge deta hai)
+router.get('/me/aadhaar', (req, res) => {
+  res.json({ aadhaar: req.user.aadhaar || { status: 'none' } });
+});
+
+// Step 1: 12-digit Aadhaar number submit → OTP (demo OTP 123456)
+router.post('/me/aadhaar/start', (req, res) => {
+  if (req.user.role !== 'provider') return res.status(403).json({ error: 'forbidden' });
+  const num = String(req.body.aadhaarNumber || '').replace(/\D/g, '');
+  if (num.length !== 12 || !verhoeffValid(num)) return res.status(400).json({ error: 'invalid_aadhaar' });
+  const db = load();
+  const u = db.users.find((x) => x.id === req.user.id);
+  u.aadhaar = { number: num, masked: maskAadhaar(num), status: 'pending', verifiedAt: null };
+  save(db);
+  res.json({ ok: true, masked: u.aadhaar.masked, message: 'OTP bheja gaya — demo OTP 123456' });
+});
+
+// Step 2: OTP verify → "Aadhaar Verified" badge sabko dikhega (number kisi ko nahi)
+router.post('/me/aadhaar/verify', (req, res) => {
+  const db = load();
+  const u = db.users.find((x) => x.id === req.user.id);
+  if (!u.aadhaar || u.aadhaar.status !== 'pending') return res.status(400).json({ error: 'no_pending' });
+  if (String(req.body.otp || '').trim() !== '123456') return res.status(400).json({ error: 'invalid_otp' });
+  u.aadhaar.status = 'verified';
+  u.aadhaar.verifiedAt = new Date().toISOString();
+  save(db);
+  res.json({ ok: true, masked: u.aadhaar.masked, verifiedAt: u.aadhaar.verifiedAt });
 });
 
 module.exports = router;
@@ -1597,6 +1963,116 @@ router.post('/admin/reports/:id/resolve', (req, res) => {
   res.json({ ok: true });
 });
 
+/* ───────────── FEEDBACK (app improvement ke liye) ───────────────── */
+// GET /api/admin/feedback — sabhi feedback padho (users/providers ka)
+router.get('/admin/feedback', (req, res) => {
+  const db = load();
+  res.json((db.feedback || []).map((f) => ({
+    ...f,
+    userName: f.userId ? (db.users.find((u) => u.id === f.userId) || {}).name || f.name : f.name,
+  })));
+});
+
+// POST /api/admin/feedback/:id/resolve — padh liya / nipta diya
+router.post('/admin/feedback/:id/resolve', (req, res) => {
+  const db = load();
+  const f = (db.feedback || []).find((x) => x.id === req.params.id);
+  if (f) { f.status = 'read'; save(); }
+  res.json({ ok: true });
+});
+
+/* ───────────── USER MODERATION (block / suspend / delete) ───────────────── */
+// 🛡️ Rule: koi bhi user/provider jo abuse, harassment, galat content kare —
+// admin use suspend (temporary), block (permanent), ya delete kar sakta hai.
+
+// GET /api/admin/users — sabhi users ki list (moderation ke liye)
+router.get('/admin/users', (req, res) => {
+  const db = load();
+  res.json(db.users.map((u) => ({
+    id: u.id, name: u.name, phone: u.phone, googleEmail: u.googleEmail || '',
+    role: u.role, status: u.status || 'active', cityId: u.cityId,
+    state: u.state || '', district: u.district || '',
+    createdAt: u.createdAt,
+    aadhaarVerified: (u.aadhaar || {}).status === 'verified',
+    providerCount: db.providers.filter((p) => p.userId === u.id).length,
+    reportCount: db.reports.filter((r) => r.targetId === u.id || (r.userId === u.id)).length,
+  })));
+});
+
+// POST /api/admin/users/:id/status  { status: active|suspended|blocked|deleted, reason? }
+router.post('/admin/users/:id/status', (req, res) => {
+  const db = load();
+  const u = db.users.find((x) => x.id === req.params.id);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  const status = String(req.body.status || '');
+  if (!['active', 'suspended', 'blocked', 'deleted'].includes(status)) {
+    return res.status(400).json({ error: 'invalid_status', hint: 'active | suspended | blocked | deleted' });
+  }
+  if (u.role === 'admin' && status !== 'active') return res.status(400).json({ error: 'cannot_moderate_admin' });
+  u.status = status;
+  u.statusReason = String(req.body.reason || '').slice(0, 200);
+  u.statusAt = new Date().toISOString();
+  // user ke saare providers bhi inactive ho jayenge (blocked/deleted par)
+  if (status === 'blocked' || status === 'deleted') {
+    db.providers.filter((p) => p.userId === u.id).forEach((p) => { p.status = status; });
+  }
+  // active session khatam (blocked/deleted par dobara login bhi rok dega requireAuth)
+  if (status === 'blocked' || status === 'deleted') {
+    db.sessions = db.sessions.filter((s) => s.userId !== u.id);
+  }
+  save();
+  res.json({ ok: true, status });
+});
+
+// DELETE /api/admin/users/:id — user + uske listings/reviews/favorites hatao
+router.delete('/admin/users/:id', (req, res) => {
+  const db = load();
+  const u = db.users.find((x) => x.id === req.params.id);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  if (u.role === 'admin') return res.status(400).json({ error: 'cannot_delete_admin' });
+  const providerIds = db.providers.filter((p) => p.userId === u.id).map((p) => p.id);
+  db.providers = db.providers.filter((p) => p.userId !== u.id);
+  db.reviews = db.reviews.filter((r) => r.userId !== u.id && !providerIds.includes(r.providerId));
+  db.favorites = db.favorites.filter((f) => f.userId !== u.id && !providerIds.includes(f.providerId));
+  db.leads = db.leads.filter((l) => !providerIds.includes(l.providerId));
+  db.sessions = db.sessions.filter((s) => s.userId !== u.id);
+  db.users = db.users.filter((x) => x.id !== u.id);
+  save();
+  res.json({ ok: true, deletedProviders: providerIds.length });
+});
+
+// POST /api/admin/providers/:id/status  { status: active|suspended|blocked|deleted, reason? }
+// (verify/reject alag hai — ye moderation ke liye: galat content wali listing ko hatana)
+router.post('/admin/providers/:id/status', (req, res) => {
+  const db = load();
+  const p = db.providers.find((x) => x.id === req.params.id);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  const status = String(req.body.status || '');
+  if (!['active', 'suspended', 'blocked', 'deleted'].includes(status)) {
+    return res.status(400).json({ error: 'invalid_status', hint: 'active | suspended | blocked | deleted' });
+  }
+  p.status = status;
+  p.statusReason = String(req.body.reason || '').slice(0, 200);
+  save();
+  res.json({ ok: true, status });
+});
+
+// DELETE /api/admin/reviews/:id — abusive/galat review hatao + rating dobara calculate
+router.delete('/admin/reviews/:id', (req, res) => {
+  const db = load();
+  const r = db.reviews.find((x) => x.id === req.params.id);
+  if (!r) return res.status(404).json({ error: 'not_found' });
+  db.reviews = db.reviews.filter((x) => x.id !== r.id);
+  const p = db.providers.find((x) => x.id === r.providerId);
+  if (p) {
+    const rest = db.reviews.filter((x) => x.providerId === p.id);
+    p.ratingCount = rest.length;
+    p.ratingAvg = rest.length ? Math.round((rest.reduce((s, x) => s + x.rating, 0) / rest.length) * 10) / 10 : 0;
+  }
+  save();
+  res.json({ ok: true });
+});
+
 module.exports = router;
 ````
 
@@ -1620,7 +2096,7 @@ module.exports = router;
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="icon" href="/icons/icon-192.png">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/app.css?v=7">
 </head>
 <body>
 
@@ -1630,6 +2106,17 @@ module.exports = router;
   <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></symbol>
   <symbol id="i-helmet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 15a7.5 7.5 0 0 1 15 0"/><path d="M2.5 15h19"/><path d="M3 18.5V15h18v3.5"/><path d="M12 7.5V4.5"/></symbol>
   <symbol id="i-scissors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9"/><path d="M14.5 14.5 20 20"/><path d="M8.1 8.1 12 12"/></symbol>
+<symbol id="i-medical" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M6 2v6a4 4 0 0 0 8 0V2"/><path d="M6 2.5h-1.5M14 2.5h1.5"/>
+<path d="M10 12v3a5 5 0 0 0 10 0v-1.5"/><circle cx="20" cy="10.5" r="2"/>
+</symbol>
+<symbol id="i-shirt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/>
+</symbol>
+<symbol id="i-toolbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/><path d="M10 13v2h4v-2"/>
+</symbol>
+<symbol id="i-star-solid" viewBox="0 0 24 24"><path fill="currentColor" d="m12 2 2.9 6.26 6.6.56-5 4.4 1.5 6.78L12 16.9l-6 4.1 1.5-6.78-5-4.4 6.6-.56z"/></symbol>
   <symbol id="i-hanger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5a2 2 0 1 1 2 2c-1 0-2 .8-2 1.8V11"/><path d="M12 11 4.5 16.2c-1 .7-.5 2.3.7 2.3h13.6c1.2 0 1.7-1.6.7-2.3L12 11z"/></symbol>
   <symbol id="i-brick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="8" height="5.5" rx="0.5"/><rect x="13" y="4.5" width="8" height="5.5" rx="0.5"/><rect x="3" y="13" width="8" height="5.5" rx="0.5"/><rect x="13" y="13" width="8" height="5.5" rx="0.5"/></symbol>
   <symbol id="i-pot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h16v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5v-5z"/><path d="M2 12h2M20 12h2"/><path d="M9.5 7c0-1.5 1-2 1-3.5M14 7c0-1.5 1-2 1-3.5"/></symbol>
@@ -1647,7 +2134,9 @@ module.exports = router;
   <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
   <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
   <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.8.7a2 2 0 0 1 1.7 2z"/></symbol>
-  <symbol id="i-whatsapp" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15L2 22.5 5.6 24a10 10 0 1 0 6.4-22zm0 2a8 8 0 1 1-4.2 14.8l-.5-.3-2.5.7.7-2.4-.3-.5A8 8 0 0 1 12 4zm-2.2 4c-.2 0-.5 0-.7.4-.3.4-.9 1-.9 2.2s.9 2.4 1 2.6c.2.2 1.9 3 4.7 4 2.3.9 2.8.7 3.3.6.7-.1 1.7-.7 1.9-1.4.2-.7.2-1.2.1-1.4l-.7-.4c-.4-.2-1.7-.8-2-.9-.2-.1-.4-.1-.6.1l-.8 1c-.2.2-.3.2-.6.1-.3-.1-1.2-.5-2.3-1.4-.9-.8-1.4-1.7-1.6-2-.1-.2 0-.4.1-.5l.5-.5c.1-.2.2-.3.2-.5.1-.2 0-.4 0-.5l-.8-1.8c-.1-.3-.3-.3-.5-.3z"/></symbol>
+  <symbol id="i-whatsapp" viewBox="0 0 24 24">
+<path fill="currentColor" d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 1.82c2.16 0 4.19.84 5.72 2.37a8.04 8.04 0 0 1 2.37 5.72c0 4.46-3.63 8.09-8.1 8.09a8.2 8.2 0 0 1-4.13-1.13l-.3-.18-3.07.81.82-2.99-.19-.31a8.03 8.03 0 0 1-1.24-4.29c0-4.46 3.63-8.09 8.12-8.09zM8.5 7.2c-.16 0-.42.06-.64.3-.22.24-.85.83-.85 2.02 0 1.19.87 2.34.99 2.5.12.16 1.69 2.68 4.19 3.65 2.08.81 2.5.65 2.96.61.45-.04 1.46-.6 1.67-1.17.21-.58.21-1.07.15-1.17-.06-.1-.22-.16-.46-.28-.24-.12-1.46-.72-1.68-.8-.22-.08-.39-.12-.55.12-.16.24-.63.8-.77.96-.14.16-.28.18-.52.06-.24-.12-1.03-.38-1.96-1.21a7.36 7.36 0 0 1-1.36-1.69c-.14-.24-.02-.37.1-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.32-.75-1.8-.19-.46-.39-.4-.53-.41h-.45z"/>
+</symbol>
   <symbol id="i-star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2l3 6.5 7 .8-5.2 4.7 1.4 6.9L12 17.5 5.8 20.9 7.2 14 2 9.3l7-.8z"/></symbol>
   <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21S3 14.5 3 8.8A4.8 4.8 0 0 1 12 6a4.8 4.8 0 0 1 9 2.8C21 14.5 12 21 12 21z"/></symbol>
   <symbol id="i-nav" viewBox="0 0 24 24"><path fill="currentColor" d="M3 11 21 3l-8 18-2.5-7.5z"/></symbol>
@@ -1702,9 +2191,11 @@ module.exports = router;
 <div id="toast-root" aria-live="polite"></div>
 
 <script src="/vendor/leaflet/leaflet.js"></script>
-<script src="/js/i18n.js"></script>
-<script src="/js/api.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/i18n.js?v=7"></script>
+<script src="/js/api.js?v=7"></script>
+<script src="/js/firebase-config.js?v=7"></script>
+<script src="/js/firebase-auth.js?v=7"></script>
+<script src="/js/app.js?v=7"></script>
 </body>
 </html>
 ````
@@ -2071,6 +2562,19 @@ body.wide #bottomnav { max-width: 1080px; }
 .skeleton { background: linear-gradient(90deg, var(--line) 25%, #f5f5f4 50%, var(--line) 75%); background-size: 200% 100%; animation: sk 1.2s infinite; border-radius: var(--radius); }
 @keyframes sk { to { background-position: -200% 0; } }
 .sk-card { height: 128px; margin-bottom: 12px; }
+
+/* ─── v2: Gallery + video thumbnails ─── */
+.gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+.gallery-item { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 1; background: var(--amber-soft); }
+.gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gallery-x { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; font-size: .75rem; cursor: pointer; }
+.video-thumb { display: block; position: relative; }
+.play-badge { position: absolute; inset: 0; display: grid; place-items: center; font-size: 1.8rem; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,.6); background: rgba(0,0,0,.12); }
+.hint { font-size: .78rem; color: var(--ink-3); margin-top: 4px; }
+
+/* ─── custom category icon images (beautician/tailor/medical) ─── */
+.cat-ico .cat-img { width: 72%; height: 72%; object-fit: contain; }
+.pin-dot .cat-img { width: 60%; height: 60%; object-fit: contain; }
 ````
 
 ## 📄 `web/js/i18n.js`
@@ -2143,6 +2647,26 @@ const I18N = {
     save_changes: 'Save changes', saved_ok: 'Saved ✓', remove_photo: 'Remove photo', edit_title: 'Edit my listing',
     dl_template: 'Download CSV template', export_csv: 'Export CSV',
     rate_after_lead: 'You contacted recently — how was it? Share your experience ⭐',
+    // v2: PAN India + profile + media + moderation
+    state_l: 'State', district_l: 'District', select_state: 'Select state', select_district: 'Select district',
+    custom_service: 'Your service name', custom_service_ph: 'e.g. RO Water Purifier Repair',
+    custom_service_hint: 'Write the work you do — customers search by this name',
+    my_profile: 'My profile', edit_profile2: 'Edit profile', bio_l: 'Bio (one line)', about_me: 'About me',
+    address_opt: 'Address (optional)', profile_saved: 'Profile updated ✓',
+    work_photos: 'Work / shop photos', add_photo: '+ Add photo', photos_hint: 'Max 6 photos — customers trust listings with photos',
+    videos_l: 'Videos (YouTube)', add_video: '+ Add video link', video_hint: 'Paste YouTube link (max 5) — shows your work',
+    about_us: 'About Us', contact_us: 'Contact Us', users_tab: 'Users',
+    block: 'Block', suspend: 'Suspend', unblock: 'Unblock', activate: 'Activate', delete_user: 'Delete user',
+    status_active: 'Active', status_suspended: 'Suspended', status_blocked: 'Blocked', status_deleted: 'Deleted',
+    confirm_block: 'Block this user? They cannot login or use the app.', confirm_suspend: 'Suspend this user (temporary)?',
+    confirm_delete_user: 'PERMANENTLY delete this user and all their listings?', user_moderated: 'User status updated ✓',
+    review_deleted: 'Review deleted ✓', gallery_of: 'Work gallery', watch_video: 'Watch video',
+    google_real: 'Continue with Google', contact_sent: 'Message noted — we will contact you soon ✓',
+    your_msg: 'Your message', firebase_off: 'Demo mode — Google login activates when Firebase is configured',
+    feedback: 'Feedback', feedback_title: 'App Feedback 💬', feedback_sub: 'Aapka feedback hamare liye bahut mayne rakhta hai — isse app aur behtar banega. Suggestion, problem, ya naya feature jo chahiye — sab likhein!',
+    fb_type: 'Main hoon', fb_user: 'User / Customer', fb_provider: 'Service Provider', fb_other: 'Other',
+    fb_msg: 'Aapka feedback (suggestion, problem, naya feature…)', fb_sent: 'Feedback bhejne ke liye shukriya! 🙏 Hum ise padhkar app behtar banayenge.',
+    share_app2: 'Share this App', fb_rating: 'App ko rate karein',
   },
   hi: {
     nav_home: 'होम', nav_search: 'खोजें', nav_fav: 'सेव', nav_account: 'खाता',
@@ -2197,6 +2721,25 @@ const I18N = {
     save_changes: 'बदलाव सेव करें', saved_ok: 'सेव हो गया ✓', remove_photo: 'फोटो हटाएं', edit_title: 'मेरी लिस्टिंग बदलें',
     dl_template: 'CSV टेम्पलेट डाउनलोड', export_csv: 'CSV एक्सपोर्ट',
     rate_after_lead: 'आपने हाल में संपर्क किया — कैसा रहा? अनुभव साझा करें ⭐',
+    state_l: 'राज्य', district_l: 'ज़िला', select_state: 'राज्य चुनें', select_district: 'ज़िला चुनें',
+    custom_service: 'आपकी सेवा का नाम', custom_service_ph: 'जैसे: आरओ वाटर प्यूरिफायर रिपेयर',
+    custom_service_hint: 'जो काम आप करते हैं वो लिखें — ग्राहक इसी नाम से खोजेंगे',
+    my_profile: 'मेरी प्रोफ़ाइल', edit_profile2: 'प्रोफ़ाइल बदलें', bio_l: 'बायो (एक लाइन)', about_me: 'मेरे बारे में',
+    address_opt: 'पता (वैकल्पिक)', profile_saved: 'प्रोफ़ाइल अपडेट हुई ✓',
+    work_photos: 'काम / दुकान की तस्वीरें', add_photo: '+ तस्वीर जोड़ें', photos_hint: 'ज़्यादा से ज़्यादा 6 तस्वीरें — तस्वीरों वाली लिस्टिंग पर भरोसा ज़्यादा होता है',
+    videos_l: 'वीडियो (YouTube)', add_video: '+ वीडियो लिंक जोड़ें', video_hint: 'YouTube लिंक पेस्ट करें (ज़्यादा से ज़्यादा 5) — आपका काम दिखेगा',
+    about_us: 'हमारे बारे में', contact_us: 'संपर्क करें', users_tab: 'उपयोगकर्ता',
+    block: 'ब्लॉक', suspend: 'सस्पेंड', unblock: 'अनब्लॉक', activate: 'चालू करें', delete_user: 'उपयोगकर्ता हटाएं',
+    status_active: 'सक्रिय', status_suspended: 'सस्पेंड', status_blocked: 'ब्लॉक', status_deleted: 'हटाया गया',
+    confirm_block: 'इस उपयोगकर्ता को ब्लॉक करें? वे लॉगिन नहीं कर पाएंगे।', confirm_suspend: 'इस उपयोगकर्ता को सस्पेंड करें (अस्थायी)?',
+    confirm_delete_user: 'इस उपयोगकर्ता और उनकी सारी लिस्टिंग को हमेशा के लिए हटाएं?', user_moderated: 'उपयोगकर्ता की स्थिति बदली ✓',
+    review_deleted: 'समीक्षा हटाई गई ✓', gallery_of: 'काम की गैलरी', watch_video: 'वीडियो देखें',
+    google_real: 'Google से जारी रखें', contact_sent: 'संदेश मिल गया — हम जल्द संपर्क करेंगे ✓',
+    your_msg: 'आपका संदेश', firebase_off: 'डेमो मोड — Firebase सेट होते ही Google login चालू होगा',
+    feedback: 'फीडबैक', feedback_title: 'ऐप फीडबैक 💬', feedback_sub: 'आपका फीडबैक हमारे लिए बहुत मायने रखता है — इससे ऐप और बेहतर बनेगा। सुझाव, समस्या, या नया फीचर जो चाहिए — सब लिखें!',
+    fb_type: 'मैं हूँ', fb_user: 'उपयोगकर्ता / ग्राहक', fb_provider: 'सेवा प्रदाता', fb_other: 'अन्य',
+    fb_msg: 'आपका फीडबैक (सुझाव, समस्या, नया फीचर…)', fb_sent: 'फीडबैक भेजने के लिए शुक्रिया! 🙏 हम इसे पढ़कर ऐप बेहतर बनाएंगे।',
+    share_app2: 'यह ऐप शेयर करें', fb_rating: 'ऐप को रेट करें',
   },
 };
 
@@ -2261,7 +2804,28 @@ const CAT_COLORS = {
   'raj-mistri': '#B45309', 'bhandara-catering': '#DC2626', plumber: '#2563EB', carpenter: '#92400E',
   painter: '#7C3AED', 'safai-karamchari': '#059669', 'ac-fridge-repair': '#0891B2', driver: '#4F46E5',
   'mobile-repair': '#E11D48', beautician: '#DB2777', cook: '#EA580C', mali: '#16A34A',
+  medical: '#DC2626', others: '#64748B',
 };
+
+/* ── Media helpers: low-size photo upload (canvas resize) + YouTube thumbs ── */
+/** File → resized JPEG data-URL (max ~1600px side, q=0.72) — 2-5x chhoti file. */
+async function imgToDataUrl(file, maxPx = 1600, quality = 0.72) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxPx / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale), h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+/** YouTube URL → videoId (backend ke parseYoutube jaisa). */
+function ytVideoId(url) {
+  const m = String(url || '').match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{6,20})/);
+  return m ? m[1] : '';
+}
+function ytThumb(videoId) {
+  return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+}
 
 function avatarSvg(name, categoryId, photo) {
   if (photo) return `<img class="avatar-img" src="${photo}" alt="" loading="lazy">`;
@@ -2275,6 +2839,12 @@ function stars(avg, count) {
   const full = Math.round(avg || 0);
   const s = '★★★★★'.slice(0, full) + '☆☆☆☆☆'.slice(0, 5 - full);
   return `<span class="stars" title="${avg}">★<b>${(avg || 0).toFixed(1)}</b> <i>(${count || 0} ${t('reviews')})</i></span>`;
+}
+
+/** Category icon: custom image (beautician/tailor/medical) ya fallback SVG. */
+function catIconHtml(iconName, iconImage, cls = 'ic') {
+  if (iconImage) return `<img class="cat-img ${cls}" src="${iconImage}" alt="" loading="lazy">`;
+  return icon(iconName || 'wrench', cls);
 }
 
 function icon(name, cls = 'ic') {
@@ -2399,7 +2969,13 @@ function timeAgo(iso) {
   /* ───────────────────────── auth helpers (copied) ──────────────────────── */
   const phoneOk = (p) => /^[6-9]\d{9}$/.test(String(p || ''));
   function publicUser(u) {
-    return { id: u.id, phone: u.phone, name: u.name, role: u.role, cityId: u.cityId };
+    return {
+      id: u.id, phone: u.phone, name: u.name, role: u.role, cityId: u.cityId,
+      state: u.state || '', district: u.district || '',
+      bio: u.bio || '', about: u.about || '', address: u.address || '',
+      photo: u.photo || null, googleEmail: u.googleEmail || '', status: u.status || 'active',
+      providerId: u.providerId || null,
+    };
   }
   function authByToken(token) {
     const d = load();
@@ -2425,14 +3001,18 @@ function timeAgo(iso) {
       subcategory: p.subcategory,
       subcategoryNameEn: sub.name_en || '', subcategoryNameHi: sub.name_hi || '',
       categoryIcon: cat.icon || 'wrench',
+      categoryIconImage: cat.iconImage || '',
       phone: p.phone, whatsapp: p.whatsapp, photo: p.photo,
+      customService: p.customService || '', gallery: p.gallery || [], videoLinks: p.videoLinks || [],
       about: p.about, skills: p.skills, priceHint: p.priceHint,
       address: p.address, location: p.location,
       availability: p.availability, isOpenNow: isOpenNow(p.availability),
-      verified: p.verified, ratingAvg: p.ratingAvg, ratingCount: p.ratingCount,
+      verified: p.verified, status: p.status || 'active', ratingAvg: p.ratingAvg, ratingCount: p.ratingCount,
       languages: p.languages,
     };
   }
+
+  const LNM_STATES = [{"state":"Andhra Pradesh","districts":["Alluri Sitharama Raju","Anakapalli","Ananthapuramu","Annamayya","Bapatla","Chittoor","Dr. B.R. Ambedkar Konaseema","East Godavari","Eluru","Guntur","Kakinada","Krishna","Kurnool","Nandyal","NTR","Palnadu","Parvathipuram Manyam","Prakasam","Sri Potti Sriramulu Nellore","Sri Sathya Sai","Srikakulam","Tirupati","Visakhapatnam","Vizianagaram","West Godavari","YSR Kadapa"]},{"state":"Arunachal Pradesh","districts":["Anjaw","Changlang","Dibang Valley","East Kameng","East Siang","Kamle","Kra Daadi","Kurung Kumey","Lepa Rada","Lohit","Longding","Lower Dibang Valley","Lower Siang","Lower Subansiri","Namsai","Pakke Kessang","Papum Pare","Shi Yomi","Siang","Tawang","Tirap","Upper Siang","Upper Subansiri","West Kameng","West Siang"]},{"state":"Assam","districts":["Bajali","Baksa","Barpeta","Biswanath","Bongaigaon","Cachar","Charaideo","Chirang","Darrang","Dhemaji","Dhubri","Dibrugarh","Dima Hasao","Goalpara","Golaghat","Hailakandi","Hojai","Jorhat","Kamrup","Kamrup Metropolitan","Karbi Anglong","Karimganj","Kokrajhar","Lakhimpur","Majuli","Morigaon","Nagaon","Nalbari","Sivasagar","Sonitpur","South Salmara-Mankachar","Tinsukia","Udalguri","West Karbi Anglong"]},{"state":"Bihar","districts":["Araria","Arwal","Aurangabad","Banka","Begusarai","Bhagalpur","Bhojpur","Buxar","Darbhanga","Gaya","Gopalganj","Jamui","Jehanabad","Kaimur","Katihar","Khagaria","Kishanganj","Lakhisarai","Madhepura","Madhubani","Munger","Muzaffarpur","Nalanda","Nawada","Pashchim Champaran","Patna","Purbi Champaran","Purnia","Rohtas","Saharsa","Samastipur","Saran","Sheikhpura","Sheohar","Sitamarhi","Siwan","Supaul","Vaishali"]},{"state":"Chhattisgarh","districts":["Balod","Baloda Bazar","Balrampur-Ramanujganj","Bastar","Bemetara","Bijapur","Bilaspur","Dantewada","Dhamtari","Durg","Gariaband","Gaurela-Pendra-Marwahi","Janjgir-Champa","Jashpur","Kabirdham","Kanker","Khairagarh-Chhuikhadan-Gandai","Kondagaon","Korba","Koriya","Mahasamund","Manendragarh-Chirmiri-Bharatpur","Mohla-Manpur-Ambagarh Chowki","Mungeli","Narayanpur","Raigarh","Raipur","Rajnandgaon","Sarangarh-Bilaigarh","Sukma","Surajpur","Surguja"]},{"state":"Goa","districts":["North Goa","South Goa"]},{"state":"Gujarat","districts":["Ahmedabad","Amreli","Anand","Aravalli","Banaskantha","Bharuch","Bhavnagar","Botad","Chhota Udepur","Dahod","Dang","Devbhoomi Dwarka","Gandhinagar","Gir Somnath","Jamnagar","Junagadh","Kheda","Kutch","Mahisagar","Mehsana","Morbi","Narmada","Navsari","Panchmahal","Patan","Porbandar","Rajkot","Sabarkantha","Surat","Surendranagar","Tapi","Vadodara","Valsad"]},{"state":"Haryana","districts":["Ambala","Bhiwani","Charkhi Dadri","Faridabad","Fatehabad","Gurugram","Hisar","Jhajjar","Jind","Kaithal","Karnal","Kurukshetra","Mahendragarh","Nuh","Palwal","Panchkula","Panipat","Rewari","Rohtak","Sirsa","Sonipat","Yamunanagar"]},{"state":"Himachal Pradesh","districts":["Bilaspur","Chamba","Hamirpur","Kangra","Kinnaur","Kullu","Lahaul and Spiti","Mandi","Shimla","Sirmaur","Solan","Una"]},{"state":"Jharkhand","districts":["Bokaro","Chatra","Deoghar","Dhanbad","Dumka","East Singhbhum","Garhwa","Giridih","Godda","Gumla","Hazaribagh","Jamtara","Khunti","Koderma","Latehar","Lohardaga","Pakur","Palamu","Ramgarh","Ranchi","Sahibganj","Seraikela-Kharsawan","Simdega","West Singhbhum"]},{"state":"Karnataka","districts":["Bagalkote","Ballari","Belagavi","Bengaluru Rural","Bengaluru Urban","Bidar","Chamarajanagar","Chikkaballapura","Chikkamagaluru","Chitradurga","Dakshina Kannada","Davanagere","Dharwad","Gadag","Hassan","Haveri","Kalaburagi","Kodagu","Kolar","Koppal","Mandya","Mysuru","Raichur","Ramanagara","Shivamogga","Tumakuru","Udupi","Uttara Kannada","Vijayanagara","Vijayapura","Yadgir"]},{"state":"Kerala","districts":["Alappuzha","Ernakulam","Idukki","Kannur","Kasaragod","Kollam","Kottayam","Kozhikode","Malappuram","Palakkad","Pathanamthitta","Thiruvananthapuram","Thrissur","Wayanad"]},{"state":"Madhya Pradesh","districts":["Alirajpur","Anuppur","Ashoknagar","Balaghat","Barwani","Betul","Bhind","Bhopal","Burhanpur","Chhatarpur","Chhindwara","Damoh","Datia","Dewas","Dhar","Dindori","Guna","Gwalior","Harda","Indore","Jabalpur","Jhabua","Katni","Khandwa","Khargone","Maheshwar","Maihar","Mandla","Mandsaur","Morena","Nagda","Narmadapuram","Narsinghpur","Neemuch","Pandhurna","Panna","Raisen","Rajgarh","Ratlam","Rewa","Sagar","Satna","Sehore","Seoni","Shahdol","Shajapur","Sheopur","Shivpuri","Sidhi","Singrauli","Tikamgarh","Ujjain","Umaria","Vidisha"]},{"state":"Maharashtra","districts":["Ahmednagar","Akola","Amravati","Beed","Bhandara","Buldhana","Chandrapur","Dhule","Gadchiroli","Gondia","Hingoli","Jalgaon","Jalna","Kolhapur","Latur","Mumbai City","Mumbai Suburban","Nagpur","Nanded","Nandurbar","Nashik","Osmanabad","Palghar","Parbhani","Pune","Raigad","Ratnagiri","Sangli","Satara","Sindhudurg","Solapur","Thane","Wardha","Washim","Yavatmal"]},{"state":"Manipur","districts":["Bishnupur","Chandel","Churachandpur","Imphal East","Imphal West","Jiribam","Kakching","Kamjong","Kangpokpi","Noney","Pherzawl","Senapati","Tamenglong","Tengnoupal","Thoubal","Ukhrul"]},{"state":"Meghalaya","districts":["East Garo Hills","East Jaintia Hills","East Khasi Hills","North Garo Hills","Ri-Bhoi","South Garo Hills","South West Garo Hills","South West Khasi Hills","West Garo Hills","West Jaintia Hills","West Khasi Hills"]},{"state":"Mizoram","districts":["Aizawl","Champhai","Hnahthial","Khawzawl","Kolasib","Lawngtlai","Lunglei","Mamit","Saiha","Saitual","Serchhip"]},{"state":"Nagaland","districts":["Chümoukedima","Dimapur","Kiphire","Kohima","Longleng","Mokokchung","Mon","Niuland","Noklak","Peren","Phek","Shamator","Tseminyü","Tuensang","Wokha","Zunheboto"]},{"state":"Odisha","districts":["Angul","Balangir","Baleshwar","Bargarh","Bhadrak","Boudh","Cuttack","Deogarh","Dhenkanal","Gajapati","Ganjam","Jagatsinghpur","Jajpur","Jharsuguda","Kalahandi","Kandhamal","Kendrapara","Kendujhar","Khordha","Koraput","Malkangiri","Mayurbhanj","Nabarangpur","Nayagarh","Nuapada","Puri","Rayagada","Sambalpur","Sonepur","Sundargarh"]},{"state":"Punjab","districts":["Amritsar","Barnala","Bathinda","Faridkot","Fatehgarh Sahib","Fazilka","Ferozepur","Gurdaspur","Hoshiarpur","Jalandhar","Kapurthala","Ludhiana","Malerkotla","Mansa","Moga","Muktsar","Pathankot","Patiala","Rupnagar","S.A.S. Nagar","Sangrur","Shaheed Bhagat Singh Nagar","Tarn Taran"]},{"state":"Rajasthan","districts":["Ajmer","Alwar","Banswara","Baran","Barmer","Bharatpur","Bhilwara","Bikaner","Bundi","Chittorgarh","Churu","Dausa","Dholpur","Dungarpur","Hanumangarh","Jaipur","Jaisalmer","Jalore","Jhalawar","Jhunjhunu","Jodhpur","Karauli","Kota","Nagaur","Pali","Pratapgarh","Rajsamand","Sawai Madhopur","Sikar","Sirohi","Sri Ganganagar","Tonk","Udaipur"]},{"state":"Sikkim","districts":["Gangtok","Gyalshing","Mangan","Namchi","Pakyong","Soreng"]},{"state":"Tamil Nadu","districts":["Ariyalur","Chengalpattu","Chennai","Coimbatore","Cuddalore","Dharmapuri","Dindigul","Erode","Kallakurichi","Kancheepuram","Karur","Krishnagiri","Madurai","Mayiladuthurai","Nagapattinam","Namakkal","Nilgiris","Perambalur","Pudukkottai","Ramanathapuram","Ranipet","Salem","Sivaganga","Tenkasi","Thanjavur","Theni","Thoothukudi","Tiruchirappalli","Tirunelveli","Tirupattur","Tiruppur","Tiruvallur","Tiruvannamalai","Tiruvarur","Vellore","Viluppuram","Virudhunagar"]},{"state":"Telangana","districts":["Adilabad","Bhadradri Kothagudem","Hanumakonda","Hyderabad","Jagtial","Jangaon","Jayashankar Bhupalpally","Jogulamba Gadwal","Kamareddy","Karimnagar","Khammam","Komaram Bheem Asifabad","Mahabubabad","Mahabubnagar","Mancherial","Medak","Medchal–Malkajgiri","Mulugu","Nagarkurnool","Nalgonda","Narayanpet","Nirmal","Nizamabad","Peddapalli","Rajanna Sircilla","Rangareddy","Sangareddy","Siddipet","Suryapet","Vikarabad","Wanaparthy","Warangal","Yadadri Bhuvanagiri"]},{"state":"Tripura","districts":["Dhalai","Gomati","Khowai","North Tripura","Sepahijala","South Tripura","Unakoti","West Tripura"]},{"state":"Uttar Pradesh","districts":["Agra","Aligarh","Ambedkar Nagar","Amethi","Amroha","Auraiya","Ayodhya","Azamgarh","Baghpat","Bahraich","Ballia","Balrampur","Banda","Barabanki","Bareilly","Basti","Bhadohi","Bijnor","Budaun","Bulandshahr","Chandauli","Chitrakoot","Deoria","Etah","Etawah","Farrukhabad","Fatehpur","Firozabad","Gautam Buddh Nagar","Ghaziabad","Ghazipur","Gonda","Gorakhpur","Hamirpur","Hapur","Hardoi","Hathras","Jalaun","Jaunpur","Jhansi","Kannauj","Kanpur Dehat","Kanpur Nagar","Kasganj","Kaushambi","Kushinagar","Lakhimpur Kheri","Lalitpur","Lucknow","Maharajganj","Mahoba","Mainpuri","Mathura","Mau","Meerut","Mirzapur","Moradabad","Muzaffarnagar","Pilibhit","Pratapgarh","Prayagraj","Raebareli","Rampur","Saharanpur","Sambhal","Sant Kabir Nagar","Shahjahanpur","Shamli","Shravasti","Siddharthnagar","Sitapur","Sonbhadra","Sultanpur","Unnao","Varanasi"]},{"state":"Uttarakhand","districts":["Almora","Bageshwar","Chamoli","Champawat","Dehradun","Haridwar","Nainital","Pauri Garhwal","Pithoragarh","Rudraprayag","Tehri Garhwal","Udham Singh Nagar","Uttarkashi"]},{"state":"West Bengal","districts":["Alipurduar","Bankura","Birbhum","Cooch Behar","Dakshin Dinajpur","Darjeeling","Hooghly","Howrah","Jalpaiguri","Jhargram","Kalimpong","Kolkata","Malda","Murshidabad","Nadia","North 24 Parganas","Paschim Bardhaman","Paschim Medinipur","Purba Bardhaman","Purba Medinipur","Purulia","South 24 Parganas","Uttar Dinajpur"]},{"state":"Andaman and Nicobar Islands (UT)","districts":["Nicobar","North and Middle Andaman","South Andaman"]},{"state":"Chandigarh (UT)","districts":["Chandigarh"]},{"state":"Dadra and Nagar Haveli and Daman and Diu (UT)","districts":["Dadra and Nagar Haveli","Daman","Diu"]},{"state":"Delhi (NCT)","districts":["Central Delhi","East Delhi","New Delhi","North Delhi","North East Delhi","North West Delhi","Shahdara","South Delhi","South East Delhi","South West Delhi","West Delhi"]},{"state":"Jammu and Kashmir (UT)","districts":["Anantnag","Bandipora","Baramulla","Budgam","Doda","Ganderbal","Jammu","Kathua","Kishtwar","Kulgam","Kupwara","Poonch","Pulwama","Rajouri","Ramban","Reasi","Samba","Shopian","Srinagar","Udhampur"]},{"state":"Ladakh (UT)","districts":["Kargil","Leh"]},{"state":"Lakshadweep (UT)","districts":["Lakshadweep"]},{"state":"Puducherry (UT)","districts":["Karaikal","Mahe","Puducherry","Yanam"]}];
 
   /* ═══════════════════════ ROUTER ═══════════════════════ */
   function route(method, path, body, token) {
@@ -2440,7 +3020,7 @@ function timeAgo(iso) {
     const q = new URLSearchParams(qs || '');
     const seg = p.replace(/^\/+|\/+$/g, '').split('/'); // e.g. ['providers','nearby']
     const user = authByToken(token);
-    const needUser = () => { if (!user) throw err(401, 'unauthorized'); return user; };
+    const needUser = () => { if (!user) throw err(401, 'unauthorized'); if (user.status && user.status !== 'active') throw err(403, 'account_' + user.status); return user; };
     const needAdmin = () => { const u = needUser(); if (u.role !== 'admin') throw err(403, 'admin_only'); return u; };
 
     // ---- auth ----
@@ -2467,10 +3047,14 @@ function timeAgo(iso) {
           id: uid('u'), phone,
           name: String(body.name || '').slice(0, 60) || 'User ' + phone.slice(-4),
           role: 'user', cityId: String(body.cityId || 'indore'),
+          state: String(body.state || '').slice(0, 40), district: String(body.district || '').slice(0, 60),
+          status: 'active', bio: '', about: '', address: '', photo: null,
           createdAt: new Date().toISOString(),
         };
         d.users.push(user);
       } else if (body.name) user.name = String(body.name).slice(0, 60);
+      if (body.state) user.state = String(body.state).slice(0, 40);
+      if (body.district) user.district = String(body.district).slice(0, 60);
       const token2 = issueToken(user.id);
       save();
       return ok({ token: token2, user: publicUser(user) });
@@ -2483,7 +3067,27 @@ function timeAgo(iso) {
         user = {
           id: uid('u'), phone: String(body.phone || ''), googleEmail: email,
           name: String(body.name || email.split('@')[0]).slice(0, 60),
-          role: 'user', cityId: 'indore', createdAt: new Date().toISOString(),
+          role: 'user', cityId: 'indore',
+          status: 'active', bio: '', about: '', address: '', photo: null,
+          createdAt: new Date().toISOString(),
+        };
+        d.users.push(user);
+      }
+      const token2 = issueToken(user.id);
+      save();
+      return ok({ token: token2, user: publicUser(user) });
+    }
+    if (p === '/auth/firebase' && method === 'POST') {
+      // demo offline mode: Firebase token verify nahi hota — google jaisa hi login
+      const d = load();
+      const email = String(body.email || 'firebase.demo@gmail.com').toLowerCase();
+      let user = d.users.find((u) => u.googleEmail === email);
+      if (!user) {
+        user = {
+          id: uid('u'), phone: String(body.phone || ''), googleEmail: email,
+          name: String(body.name || email.split('@')[0]).slice(0, 60),
+          role: 'user', cityId: 'indore', status: 'active',
+          bio: '', about: '', address: '', photo: null, createdAt: new Date().toISOString(),
         };
         d.users.push(user);
       }
@@ -2504,6 +3108,7 @@ function timeAgo(iso) {
       return ok(load().categories.filter((c) => c.active !== false).sort((a, b) => a.order - b.order));
     }
     if (p === '/cities' && method === 'GET') return ok(load().cities);
+    if (p === '/states' && method === 'GET') return ok(LNM_STATES);
 
     if (p === '/providers/nearby' && method === 'GET') {
       const d = load();
@@ -2666,7 +3271,10 @@ function timeAgo(iso) {
     if (p === '/reports' && method === 'POST') {
       const u = needUser(); const d = load();
       d.reports.unshift({
-        id: uid('rep'), providerId: String(body.providerId || ''),
+        id: uid('rep'),
+        targetType: ['provider', 'user', 'review'].includes(body.targetType) ? body.targetType : 'provider',
+        targetId: String(body.targetId || body.providerId || ''),
+        providerId: String(body.providerId || ''),
         userId: u.id, userName: u.name,
         reason: String(body.reason || 'User report').slice(0, 300),
         status: 'open', createdAt: new Date().toISOString(),
@@ -2689,7 +3297,10 @@ function timeAgo(iso) {
         businessName: String(b.businessName || b.name).slice(0, 80),
         categoryId: cat.id,
         subcategory: String(b.subcategory || (cat.subcategories[0] || {}).id || ''),
+        customService: cat.customAllowed ? String(b.customService || '').slice(0, 60) : '',
         phone: String(b.phone).replace(/\D/g, '').slice(-10),
+        gallery: Array.isArray(b.gallery) ? b.gallery.filter((g) => typeof g === 'string' && g.startsWith('data:image')).slice(0, 6).map((g) => g.slice(0, 300000)) : [],
+        videoLinks: Array.isArray(b.videoLinks) ? b.videoLinks.map(parseYt).filter(Boolean).slice(0, 5) : [],
         whatsapp: String(b.whatsapp || b.phone).replace(/\D/g, '').slice(-10),
         photo: typeof b.photo === 'string' && b.photo.startsWith('data:image') ? b.photo.slice(0, 400000) : null,
         about: String(b.about || '').slice(0, 500),
@@ -2698,7 +3309,8 @@ function timeAgo(iso) {
         address: {
           line1: String(b.address || '').slice(0, 120), area: String(b.area || '').slice(0, 60),
           city: city.name_en, cityId: city.id,
-          state: String(b.state || city.state).slice(0, 40), pincode: String(b.pincode || '').slice(0, 10),
+          state: String(b.state || city.state).slice(0, 40), district: String(b.district || '').slice(0, 60),
+          pincode: String(b.pincode || '').slice(0, 10),
         },
         location: {
           lat: Number(b.lat) || city.lat + (Math.random() - 0.5) * 0.02,
@@ -2988,6 +3600,147 @@ function timeAgo(iso) {
       return ok({ ok: true });
     }
 
+
+    // ---- v2: profile, gallery, videos, admin moderation ----
+    function parseYt(url) {
+      const m = String(url || '').match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{6,20})/);
+      return m ? { url: String(url).slice(0, 200), videoId: m[1] } : null;
+    }
+    if (p === '/me/profile' && method === 'PUT') {
+      const u = needUser(); const b = body || {};
+      if (b.name != null) u.name = String(b.name).slice(0, 60);
+      if (b.bio != null) u.bio = String(b.bio).slice(0, 200);
+      if (b.about != null) u.about = String(b.about).slice(0, 500);
+      if (b.address != null) u.address = String(b.address).slice(0, 200);
+      if (b.state != null) u.state = String(b.state).slice(0, 40);
+      if (b.district != null) u.district = String(b.district).slice(0, 60);
+      if (b.photo === null || (typeof b.photo === 'string' && b.photo.startsWith('data:image'))) u.photo = b.photo ? b.photo.slice(0, 200000) : null;
+      save();
+      return ok({ ok: true, user: publicUser(u) });
+    }
+    if (seg[0] === 'me' && seg[1] === 'providers' && seg[2] && seg[3] === 'gallery' && method === 'POST') {
+      const u = needUser(); const d = load();
+      const pr = d.providers.find((x) => x.id === seg[2]);
+      if (!pr) throw err(404, 'provider_not_found');
+      if (pr.userId !== u.id && u.role !== 'admin') throw err(403, 'forbidden');
+      const photo = String(body.photo || '');
+      if (!photo.startsWith('data:image')) throw err(400, 'invalid_photo');
+      pr.gallery = pr.gallery || [];
+      if (pr.gallery.length >= 6) throw err(400, 'gallery_full');
+      pr.gallery.push(photo.slice(0, 300000));
+      save();
+      return ok({ ok: true, count: pr.gallery.length }, 201);
+    }
+    if (seg[0] === 'me' && seg[1] === 'providers' && seg[2] && seg[3] === 'gallery' && seg[4] && method === 'DELETE') {
+      const u = needUser(); const d = load();
+      const pr = d.providers.find((x) => x.id === seg[2]);
+      if (!pr) throw err(404, 'provider_not_found');
+      if (pr.userId !== u.id && u.role !== 'admin') throw err(403, 'forbidden');
+      const idx = Number(seg[4]);
+      if (pr.gallery && idx >= 0 && idx < pr.gallery.length) pr.gallery.splice(idx, 1);
+      save();
+      return ok({ ok: true, count: (pr.gallery || []).length });
+    }
+    if (seg[0] === 'me' && seg[1] === 'providers' && seg[2] && seg[3] === 'videos' && method === 'PUT') {
+      const u = needUser(); const d = load();
+      const pr = d.providers.find((x) => x.id === seg[2]);
+      if (!pr) throw err(404, 'provider_not_found');
+      if (pr.userId !== u.id && u.role !== 'admin') throw err(403, 'forbidden');
+      const links = Array.isArray(body.links) ? body.links : [];
+      pr.videoLinks = links.map(parseYt).filter(Boolean).slice(0, 5);
+      save();
+      return ok({ ok: true, videoLinks: pr.videoLinks });
+    }
+    if (p === '/admin/users' && method === 'GET') {
+      needAdmin(); const d = load();
+      return ok(d.users.map((u) => ({
+        id: u.id, name: u.name, phone: u.phone, googleEmail: u.googleEmail || '',
+        role: u.role, status: u.status || 'active', cityId: u.cityId,
+        state: u.state || '', district: u.district || '', createdAt: u.createdAt,
+        providerCount: d.providers.filter((x) => x.userId === u.id).length,
+        reportCount: d.reports.filter((r) => r.targetId === u.id || r.userId === u.id).length,
+      })));
+    }
+    if (seg[0] === 'admin' && seg[1] === 'users' && seg[2] && seg[3] === 'status' && method === 'POST') {
+      needAdmin(); const d = load();
+      const uu = d.users.find((x) => x.id === seg[2]);
+      if (!uu) throw err(404, 'not_found');
+      const st = String(body.status || '');
+      if (!['active', 'suspended', 'blocked', 'deleted'].includes(st)) throw err(400, 'invalid_status');
+      if (uu.role === 'admin' && st !== 'active') throw err(400, 'cannot_moderate_admin');
+      uu.status = st; uu.statusReason = String(body.reason || '').slice(0, 200);
+      if (st === 'blocked' || st === 'deleted') {
+        d.providers.filter((x) => x.userId === uu.id).forEach((x) => { x.status = st; });
+        d.sessions = d.sessions.filter((sn) => sn.userId !== uu.id);
+      }
+      save();
+      return ok({ ok: true, status: st });
+    }
+    if (seg[0] === 'admin' && seg[1] === 'users' && seg[2] && method === 'DELETE') {
+      needAdmin(); const d = load();
+      const uu = d.users.find((x) => x.id === seg[2]);
+      if (!uu) throw err(404, 'not_found');
+      if (uu.role === 'admin') throw err(400, 'cannot_delete_admin');
+      const pids = d.providers.filter((x) => x.userId === uu.id).map((x) => x.id);
+      d.providers = d.providers.filter((x) => x.userId !== uu.id);
+      d.reviews = d.reviews.filter((r) => r.userId !== uu.id && !pids.includes(r.providerId));
+      d.favorites = d.favorites.filter((f) => f.userId !== uu.id && !pids.includes(f.providerId));
+      d.leads = d.leads.filter((l) => !pids.includes(l.providerId));
+      d.sessions = d.sessions.filter((sn) => sn.userId !== uu.id);
+      d.users = d.users.filter((x) => x.id !== uu.id);
+      save();
+      return ok({ ok: true, deletedProviders: pids.length });
+    }
+    if (seg[0] === 'admin' && seg[1] === 'providers' && seg[2] && seg[3] === 'status' && method === 'POST') {
+      needAdmin(); const d = load();
+      const pr = d.providers.find((x) => x.id === seg[2]);
+      if (!pr) throw err(404, 'not_found');
+      const st = String(body.status || '');
+      if (!['active', 'suspended', 'blocked', 'deleted'].includes(st)) throw err(400, 'invalid_status');
+      pr.status = st; pr.statusReason = String(body.reason || '').slice(0, 200);
+      save();
+      return ok({ ok: true, status: st });
+    }
+    if (p === '/feedback' && method === 'POST') {
+      const d = load();
+      const message = String(body.message || '').trim();
+      if (message.length < 5) throw err(400, 'message_required');
+      d.feedback = d.feedback || [];
+      d.feedback.unshift({
+        id: uid('fb'), userId: user ? user.id : null,
+        name: String(body.name || '').slice(0, 60), contact: String(body.contact || '').slice(0, 80),
+        type: ['user', 'provider', 'other'].includes(body.type) ? body.type : 'user',
+        rating: Math.max(1, Math.min(5, Number(body.rating) || 5)),
+        message: message.slice(0, 1000), status: 'new', createdAt: new Date().toISOString(),
+      });
+      d.feedback = d.feedback.slice(0, 1000);
+      save();
+      return ok({ ok: true, message: 'Feedback mil gaya — shukriya!' }, 201);
+    }
+    if (p === '/admin/feedback' && method === 'GET') {
+      needAdmin(); const d = load();
+      return ok((d.feedback || []).map((f) => ({ ...f, userName: f.userId ? (d.users.find((u) => u.id === f.userId) || {}).name || f.name : f.name })));
+    }
+    if (seg[0] === 'admin' && seg[1] === 'feedback' && seg[2] && seg[3] === 'resolve' && method === 'POST') {
+      needAdmin(); const d = load();
+      const f = (d.feedback || []).find((x) => x.id === seg[2]);
+      if (f) { f.status = 'read'; save(); }
+      return ok({ ok: true });
+    }
+    if (seg[0] === 'admin' && seg[1] === 'reviews' && seg[2] && method === 'DELETE') {
+      needAdmin(); const d = load();
+      const rv = d.reviews.find((x) => x.id === seg[2]);
+      if (!rv) throw err(404, 'not_found');
+      d.reviews = d.reviews.filter((x) => x.id !== rv.id);
+      const pr = d.providers.find((x) => x.id === rv.providerId);
+      if (pr) {
+        const rest = d.reviews.filter((x) => x.providerId === pr.id);
+        pr.ratingCount = rest.length;
+        pr.ratingAvg = rest.length ? Math.round((rest.reduce((a, x) => a + x.rating, 0) / rest.length) * 10) / 10 : 0;
+      }
+      save();
+      return ok({ ok: true });
+    }
     throw err(404, 'not_found');
   }
 
@@ -3027,7 +3780,7 @@ function timeAgo(iso) {
 
 /* ═══════════════ STATE ═══════════════ */
 const S = {
-  cats: [], cities: [],
+  cats: [], cities: [], states: [],
   cityId: localStorage.getItem('lnm_city') || 'indore',
   origin: null,                 // {lat, lng, label}
   gps: false,
@@ -3048,13 +3801,15 @@ const S = {
   applyStaticI18n();
   bindShell();
   try {
-    const [cats, cities] = await Promise.all([API.get('/categories'), API.get('/cities')]);
-    S.cats = cats; S.cities = cities;
+    const [cats, cities, states] = await Promise.all([
+      API.get('/categories'), API.get('/cities'), API.get('/states').catch(() => []),
+    ]);
+    S.cats = cats; S.cities = cities; S.states = states;
   } catch (e) { console.error('meta load failed', e); }
   if (API.user) refreshFavorites();
   window.addEventListener('hashchange', route);
   route();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // (service worker hataya gaya — purana cache problem karta tha; sw.js ab sirf cleaner hai)
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.deferredInstall = e; });
   window.addEventListener('online', updateOnline); window.addEventListener('offline', updateOnline);
   updateOnline();
@@ -3289,6 +4044,9 @@ function route(soft) {
     case 'register': return viewRegister(view);
     case 'dashboard': return viewDashboard(view);
     case 'admin': return viewAdmin(view, parts[1]);
+    case 'about': return viewAbout(view);
+    case 'contact': return viewContact(view);
+    case 'feedback': return viewFeedback(view);
     default: return viewHome(view);
   }
   if (!soft) window.scrollTo(0, 0);
@@ -3302,7 +4060,7 @@ function destroyMap() {
 async function viewHome(view) {
   const catGrid = S.cats.map((c) => `
     <a class="cat-item" href="#/search?cat=${c.id}">
-      <span class="cat-ico" style="background:${CAT_COLORS[c.id] || '#F59E0B'}">${icon(c.icon || 'wrench')}</span>
+      <span class="cat-ico" style="background:${CAT_COLORS[c.id] || '#F59E0B'}">${catIconHtml(c.icon, c.iconImage)}</span>
       <span class="cat-name">${esc(locName(c.name_en, c.name_hi))}</span>
     </a>`).join('');
 
@@ -3487,7 +4245,7 @@ function renderMapView(box, results) {
     const color = CAT_COLORS[p.categoryId] || '#F59E0B';
     const pin = L.divIcon({
       className: '',
-      html: `<div class="pin-dot" style="background:${color}">${icon(p.categoryIcon || 'wrench')}</div>`,
+      html: `<div class="pin-dot" style="background:${color}">${catIconHtml(p.categoryIcon, p.categoryIconImage)}</div>`,
       iconSize: [34, 34], iconAnchor: [17, 30],
     });
     L.marker([p.location.lat, p.location.lng], { icon: pin }).addTo(map)
@@ -3541,7 +4299,7 @@ async function viewDetail(view, id, query) {
         ${avatarSvg(p.businessName, p.categoryId, p.photo)}
         <div class="card-info">
           <h2 style="margin:0 0 2px;font-size:1.2rem">${esc(p.businessName)}</h2>
-          <div class="card-sub">${esc(locName(p.categoryNameEn, p.categoryNameHi))} · ${esc(locName(p.subcategoryNameEn, p.subcategoryNameHi))}</div>
+          <div class="card-sub">${p.customService ? esc(p.customService) + ' · ' : ''}${esc(locName(p.categoryNameEn, p.categoryNameHi))}${p.subcategoryNameEn ? ' · ' + esc(locName(p.subcategoryNameEn, p.subcategoryNameHi)) : ''}</div>
           ${stars(p.ratingAvg, p.ratingCount)}
           <div class="card-badges">
             <span class="badge ${p.isOpenNow ? 'badge-open' : 'badge-closed'}">${p.isOpenNow ? '● ' + t('open_now') : '● ' + t('closed_now')}</span>
@@ -3562,6 +4320,12 @@ async function viewDetail(view, id, query) {
     </div>
 
     ${p.about ? `<div class="panel"><h4>${t('about')}</h4><div class="muted">${esc(p.about)}</div></div>` : ''}
+    ${p.gallery && p.gallery.length ? `<div class="panel"><h4>📸 ${t('gallery_of')}</h4>
+      <div class="gallery-grid">${p.gallery.map((g) => `<div class="gallery-item"><img src="${g}" alt="" loading="lazy"></div>`).join('')}</div></div>` : ''}
+    ${p.videoLinks && p.videoLinks.length ? `<div class="panel"><h4>🎥 ${t('videos_l')}</h4>
+      <div class="gallery-grid">${p.videoLinks.map((v) => `
+        <a class="gallery-item video-thumb" href="https://www.youtube.com/watch?v=${esc(v.videoId)}" target="_blank" rel="noopener">
+          <img src="${ytThumb(v.videoId)}" alt="" loading="lazy"><span class="play-badge">▶</span></a>`).join('')}</div></div>` : ''}
     ${p.skills && p.skills.length ? `<div class="panel"><h4>${t('skills')}</h4><div class="skill-chips">${p.skills.map((k) => `<span class="chip">${esc(k)}</span>`).join('')}</div>
       ${p.priceHint ? `<div class="kv"><span class="k">${t('price_hint')}</span><span>${esc(p.priceHint)}</span></div>` : ''}</div>` : ''}
 
@@ -3590,7 +4354,7 @@ async function viewDetail(view, id, query) {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', maxZoom: 19 }).addTo(map);
     const color = CAT_COLORS[p.categoryId] || '#F59E0B';
     L.marker([p.location.lat, p.location.lng], {
-      icon: L.divIcon({ className: '', html: `<div class="pin-dot" style="background:${color}">${icon(p.categoryIcon || 'wrench')}</div>`, iconSize: [34, 34], iconAnchor: [17, 30] }),
+      icon: L.divIcon({ className: '', html: `<div class="pin-dot" style="background:${color}">${catIconHtml(p.categoryIcon, p.categoryIconImage)}</div>`, iconSize: [34, 34], iconAnchor: [17, 30] }),
     }).addTo(map);
     map.on('click', () => window.open(contactLink(p, 'directions'), '_blank'));
   } catch (e) {}
@@ -3675,28 +4439,40 @@ function viewLogin(view) {
             </div>
           </div>
           <button class="btn btn-primary btn-block" id="login-go">${t('verify')}</button>
-          <button class="btn btn-ghost btn-block" id="google-go">${t('google_login')}</button>
+          <button class="btn btn-ghost btn-block" id="google-go">${LnmFirebase.configured ? t('google_real') : t('google_login')}</button>
         </div>
       </div>
     </div>`;
   let step = 1;
+  let fbConfirmation = null; // Firebase phone auth confirmation (real OTP mode)
   document.getElementById('login-go').onclick = async () => {
     const phone = document.getElementById('login-phone').value.replace(/\D/g, '').slice(-10);
     if (step === 1) {
       try {
-        await API.post('/auth/request-otp', { phone });
+        if (LnmFirebase.configured) {
+          // 🔥 REAL OTP — Firebase Phone Auth (SMS asli me jaata hai)
+          fbConfirmation = await LnmFirebase.phoneStart('+91' + phone, document.getElementById('login-go'));
+          toast(t('otp_sent'));
+        } else {
+          await API.post('/auth/request-otp', { phone });
+          toast(t('otp_sent'));
+        }
         step = 2;
         document.getElementById('login-step2').style.display = 'block';
         document.getElementById('login-go').textContent = t('verify');
-        document.getElementById('login-otp').value = '123456';
-        toast(t('otp_sent'));
+        document.getElementById('login-otp').value = LnmFirebase.configured ? '' : '123456';
       } catch (e) { toast(e.data?.hint || t('error_gen')); }
     } else {
       try {
-        const r = await API.post('/auth/verify-otp', {
-          phone, code: document.getElementById('login-otp').value,
-          name: document.getElementById('login-name').value, cityId: S.cityId,
-        });
+        let r;
+        if (LnmFirebase.configured && fbConfirmation) {
+          r = await LnmFirebase.phoneVerify(fbConfirmation, document.getElementById('login-otp').value);
+        } else {
+          r = await API.post('/auth/verify-otp', {
+            phone, code: document.getElementById('login-otp').value,
+            name: document.getElementById('login-name').value, cityId: S.cityId,
+          });
+        }
         API.token = r.token; API.user = r.user;
         toast('✓ ' + r.user.name);
         await refreshFavorites();
@@ -3706,12 +4482,18 @@ function viewLogin(view) {
   };
   document.getElementById('google-go').onclick = async () => {
     try {
-      const r = await API.post('/auth/google', { name: 'Google User', email: 'demo.user@gmail.com' });
+      let r;
+      if (LnmFirebase.configured) {
+        r = await LnmFirebase.google(); // 🔥 REAL Google login
+      } else {
+        toast(t('firebase_off'));
+        r = await API.post('/auth/google', { name: 'Google User', email: 'demo.user@gmail.com' });
+      }
       API.token = r.token; API.user = r.user;
       toast('✓ ' + r.user.name);
       await refreshFavorites();
       history.back();
-    } catch (e) { toast(t('error_gen')); }
+    } catch (e) { toast(e.data?.hint || t('error_gen')); }
   };
   window.scrollTo(0, 0);
 }
@@ -3741,12 +4523,43 @@ function viewAccount(view) {
   const u = API.user;
   view.innerHTML = `
     <div class="panel" style="text-align:center">
-      <div style="width:72px;height:72px;margin:6px auto;border-radius:50%;background:var(--amber-soft);display:grid;place-items:center">
-        ${icon('user', 'ic ic-lg')}
+      <div style="width:72px;height:72px;margin:6px auto;border-radius:50%;background:var(--amber-soft);display:grid;place-items:center;overflow:hidden">
+        ${u && u.photo ? `<img src="${u.photo}" style="width:72px;height:72px;object-fit:cover" alt="">` : icon('user', 'ic ic-lg')}
       </div>
-      ${u ? `<h3 style="margin:6px 0 2px">${esc(u.name)}</h3><div class="muted">+91 ${esc(u.phone || '—')} · ${u.role}</div>`
+      ${u ? `<h3 style="margin:6px 0 2px">${esc(u.name)}</h3>
+          <div class="muted">+91 ${esc(u.phone || '—')} · ${u.role}</div>
+          ${u.bio ? `<div class="tiny" style="margin-top:4px">${esc(u.bio)}</div>` : ''}
+          ${(u.state || u.district) ? `<div class="tiny muted">📍 ${esc([u.district, u.state].filter(Boolean).join(', '))}</div>` : ''}`
           : `<h3 style="margin:6px 0">${t('my_account')}</h3><a class="btn btn-primary" href="#/login">${t('login')}</a>`}
     </div>
+    ${u ? `
+    <div class="panel">
+      <div class="section-title" style="margin:0 0 10px">👤 ${t('my_profile')}</div>
+      <div class="form">
+        <div class="field"><label class="label">${t('name_l')}</label>
+          <input class="input" id="p-name" value="${esc(u.name || '')}"></div>
+        <div class="field"><label class="label">${t('bio_l')}</label>
+          <input class="input" id="p-bio" maxlength="200" value="${esc(u.bio || '')}"></div>
+        <div class="field"><label class="label">${t('about_me')}</label>
+          <textarea class="textarea" id="p-about" maxlength="500">${esc(u.about || '')}</textarea></div>
+        <div class="field"><label class="label">${t('address_opt')}</label>
+          <input class="input" id="p-addr" value="${esc(u.address || '')}"></div>
+        <div class="row-2">
+          <div class="field"><label class="label">${t('state_l')}</label>
+            <select class="select" id="p-state"><option value="">${t('select_state')}</option>
+              ${(S.states || []).map((s) => `<option value="${esc(s.state)}" ${u.state === s.state ? 'selected' : ''}>${esc(s.state)}</option>`).join('')}
+            </select></div>
+          <div class="field"><label class="label">${t('district_l')}</label>
+            <select class="select" id="p-district"><option value="">${t('select_district')}</option>
+              ${((((S.states || []).find((s) => s.state === u.state) || {}).districts) || []).map((x) => `<option value="${esc(x)}" ${u.district === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}
+            </select></div>
+        </div>
+        <div class="field"><label class="label">${t('photo_l')}</label>
+          <label class="photo-drop" for="p-photo">${icon('upload', 'ic ic-lg')}<b>${t('add_photo')}</b></label>
+          <input type="file" id="p-photo" accept="image/*" hidden></div>
+        <button class="btn btn-primary btn-block" id="p-save">${t('save_changes')}</button>
+      </div>
+    </div>` : ''}
     <div class="panel">
       <a class="cta-card" href="#/register" style="margin:0 0 10px">
         <span class="cat-ico" style="background:var(--amber);width:44px;height:44px">${icon('plus')}</span>
@@ -3762,16 +4575,62 @@ function viewAccount(view) {
     <div class="panel">
       <div class="kv"><span class="k">${icon('globe')}</span><span>${t('select_city')}: <b>${esc(locName((S.cities.find((c) => c.id === S.cityId) || {}).name_en || S.cityId, (S.cities.find((c) => c.id === S.cityId) || {}).name_hi))}</b> <button class="btn btn-ghost btn-sm" id="acc-city">${t('change')}</button></span></div>
     </div>
+    <div class="panel">
+      <a class="cta-card" href="#/about" style="margin:0 0 10px">
+        <span class="cat-ico" style="background:var(--amber);width:44px;height:44px">ℹ️</span>
+        <div><b>${t('about_us')}</b></div>${icon('chevron')}</a>
+      <a class="cta-card" href="#/contact">
+        <span class="cat-ico" style="background:var(--ink);width:44px;height:44px">📞</span>
+        <div><b>${t('contact_us')}</b></div>${icon('chevron')}</a>
+      <a class="cta-card" href="#/feedback" style="margin-top:10px">
+        <span class="cat-ico" style="background:#059669;width:44px;height:44px">💬</span>
+        <div><b>${t('feedback')}</b></div>${icon('chevron')}</a>
+    </div>
+    <button class="btn btn-ghost btn-block" id="acc-share">${icon('share')} ${t('share_app2')}</button>
     ${u ? `<button class="btn btn-danger btn-block" id="logout">${t('logout')}</button>` : ''}
     <p class="tiny" style="text-align:center;margin-top:18px">Labors Near Me · Made for India 🇮🇳<br>Demo build — admin login: phone 9000000001, OTP 123456</p>
   `;
   document.getElementById('acc-city').onclick = openCityModal;
+  document.getElementById('acc-share').onclick = () => shareAppOrProvider(null);
   const lo = document.getElementById('logout');
   if (lo) lo.onclick = async () => {
     try { await API.post('/auth/logout'); } catch (e) {}
     API.token = ''; API.user = null; S.favorites = new Set();
     toast('✓'); route(true);
   };
+  // 👤 Profile edit (name, bio, about, address, state, district, photo)
+  if (u) {
+    const pState = document.getElementById('p-state');
+    pState.onchange = () => {
+      const st = (S.states || []).find((s) => s.state === pState.value);
+      document.getElementById('p-district').innerHTML = '<option value="">' + t('select_district') + '</option>'
+        + ((st && st.districts) || []).map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    };
+    let newPhoto;
+    document.getElementById('p-photo').onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      newPhoto = await imgToDataUrl(file, 480, 0.8);
+      toast('📷 ✓');
+    };
+    document.getElementById('p-save').onclick = async () => {
+      try {
+        const body = {
+          name: document.getElementById('p-name').value,
+          bio: document.getElementById('p-bio').value,
+          about: document.getElementById('p-about').value,
+          address: document.getElementById('p-addr').value,
+          state: document.getElementById('p-state').value,
+          district: document.getElementById('p-district').value,
+        };
+        if (newPhoto) body.photo = newPhoto;
+        const r = await API.put('/me/profile', body);
+        API.user = r.user;
+        toast(t('profile_saved'));
+        route(true);
+      } catch (e) { toast(e.data?.hint || t('error_gen')); }
+    };
+  }
   window.scrollTo(0, 0);
 }
 
@@ -3802,6 +4661,11 @@ function viewRegister(view) {
   const subCat = (S.cats.find((c) => c.id === d.categoryId) || {}).subcategories || [];
   const subOpts = subCat.map((sc) => `<option value="${sc.id}" ${d.subcategory === sc.id ? 'selected' : ''}>${esc(locName(sc.name_en, sc.name_hi))}</option>`).join('');
   const cityOpts = S.cities.map((c) => `<option value="${c.id}" ${d.cityId === c.id ? 'selected' : ''}>${esc(locName(c.name_en, c.name_hi))}</option>`).join('');
+  // PAN India: state → district dropdowns
+  const stateOpts = (S.states || []).map((s) => `<option value="${esc(s.state)}" ${d.state === s.state ? 'selected' : ''}>${esc(s.state)}</option>`).join('');
+  const curState = (S.states || []).find((s) => s.state === d.state);
+  const districtOpts = ((curState && curState.districts) || []).map((x) => `<option value="${esc(x)}" ${d.district === x ? 'selected' : ''}>${esc(x)}</option>`).join('');
+  const isOthers = d.categoryId === 'others';
 
   let formHtml = '';
   if (step === 1) {
@@ -3812,8 +4676,10 @@ function viewRegister(view) {
         <input class="input" id="r-biz" value="${esc(d.businessName || '')}"></div>
       <div class="field"><label class="label">${t('category')} *</label>
         <select class="select" id="r-cat">${catOpts}</select></div>
-      <div class="field"><label class="label">${t('subcategory')}</label>
-        <select class="select" id="r-sub">${subOpts}</select></div>
+      ${isOthers ? `<div class="field"><label class="label">${t('custom_service')} *</label>
+        <input class="input" id="r-custom" value="${esc(d.customService || '')}" placeholder="${t('custom_service_ph')}">
+        <div class="hint">${t('custom_service_hint')}</div></div>` : `<div class="field"><label class="label">${t('subcategory')}</label>
+        <select class="select" id="r-sub">${subOpts}</select></div>`}
       <div class="row-2">
         <div class="field"><label class="label">${t('phone')} *</label>
           <input class="input" id="r-phone" type="tel" inputmode="numeric" maxlength="10" value="${esc(d.phone || '')}"></div>
@@ -3822,6 +4688,12 @@ function viewRegister(view) {
       </div>`;
   } else if (step === 2) {
     formHtml = `
+      <div class="row-2">
+        <div class="field"><label class="label">${t('state_l')} *</label>
+          <select class="select" id="r-state"><option value="">${t('select_state')}</option>${stateOpts}</select></div>
+        <div class="field"><label class="label">${t('district_l')}</label>
+          <select class="select" id="r-district"><option value="">${t('select_district')}</option>${districtOpts}</select></div>
+      </div>
       <div class="field"><label class="label">${t('city')}</label>
         <select class="select" id="r-city">${cityOpts}</select></div>
       <div class="field"><label class="label">${t('address_l2')} *</label>
@@ -3844,6 +4716,20 @@ function viewRegister(view) {
           <b>${t('photo_hint')}</b><span class="hint">JPG/PNG · phone se click karein</span></label>
         <input type="file" id="r-photo" accept="image/*" capture="environment" hidden>
         <div id="photo-prev"></div>
+      </div>
+      <div class="field"><label class="label">📸 ${t('work_photos')}</label>
+        <label class="photo-drop" for="r-gallery">${icon('upload', 'ic ic-lg')}
+          <b>${t('add_photo')}</b><span class="hint">${t('photos_hint')}</span></label>
+        <input type="file" id="r-gallery" accept="image/*" multiple hidden>
+        <div id="gallery-prev" class="gallery-grid"></div>
+      </div>
+      <div class="field"><label class="label">🎥 ${t('videos_l')}</label>
+        <div style="display:flex;gap:8px">
+          <input class="input" id="r-video" placeholder="https://youtube.com/watch?v=…">
+          <button class="btn btn-ghost" id="r-video-add" type="button">${t('add_video')}</button>
+        </div>
+        <div class="hint">${t('video_hint')}</div>
+        <div id="video-list"></div>
       </div>
       <div class="field"><label class="label">${t('about')}</label>
         <textarea class="textarea" id="r-about" placeholder="${t('about_ph')}">${esc(d.about || '')}</textarea></div>
@@ -3879,8 +4765,8 @@ function viewRegister(view) {
   // capture current fields into draft before navigating
   const capture = () => {
     const g = (id) => { const el = document.getElementById(id); return el ? el.value : undefined; };
-    if (step === 1) Object.assign(d, { name: g('r-name'), businessName: g('r-biz'), categoryId: g('r-cat'), subcategory: g('r-sub'), phone: g('r-phone'), whatsapp: g('r-wa') });
-    if (step === 2) Object.assign(d, { cityId: g('r-city'), address: g('r-addr'), area: g('r-area'), pincode: g('r-pin') });
+    if (step === 1) Object.assign(d, { name: g('r-name'), businessName: g('r-biz'), categoryId: g('r-cat'), subcategory: g('r-sub'), customService: g('r-custom'), phone: g('r-phone'), whatsapp: g('r-wa') });
+    if (step === 2) Object.assign(d, { state: g('r-state'), district: g('r-district'), cityId: g('r-city'), address: g('r-addr'), area: g('r-area'), pincode: g('r-pin') });
     if (step === 3) Object.assign(d, { about: g('r-about'), skills: (g('r-skills') || '').split(',').map((x) => x.trim()).filter(Boolean), priceHint: g('r-price'), open: g('r-open'), close: g('r-close'), kycName: g('r-kyc') });
   };
 
@@ -3904,6 +4790,10 @@ function viewRegister(view) {
     };
     if (d.lat) drop({ lat: d.lat, lng: d.lng });
     map.on('click', (e) => drop(e.latlng));
+    // 🗺️ PAN India: state change → district list refresh
+    document.getElementById('r-state').onchange = (e) => {
+      d.state = e.target.value; delete d.district; capture(); viewRegister(view);
+    };
     document.getElementById('r-city').onchange = (e) => {
       d.cityId = e.target.value; capture();
       const c = S.cities.find((x) => x.id === d.cityId);
@@ -3927,6 +4817,40 @@ function viewRegister(view) {
       reader.readAsDataURL(file);
     };
     if (d.photo) document.getElementById('photo-prev').innerHTML = `<img src="${d.photo}" style="max-height:120px;border-radius:12px;margin-top:8px" alt="">`;
+    // 📸 work gallery (multi-photo, resized)
+    d.gallery = d.gallery || [];
+    d.videoLinks = d.videoLinks || [];
+    const renderGallery = () => {
+      document.getElementById('gallery-prev').innerHTML = d.gallery.map((g, i) =>
+        `<div class="gallery-item"><img src="${g}" alt=""><button type="button" class="gallery-x" data-i="${i}">✕</button></div>`).join('');
+      document.querySelectorAll('.gallery-x').forEach((b) => b.onclick = () => { d.gallery.splice(Number(b.dataset.i), 1); renderGallery(); });
+    };
+    renderGallery();
+    document.getElementById('r-gallery').onchange = async (e) => {
+      for (const file of [...e.target.files]) {
+        if (d.gallery.length >= 6) { toast('⚠️ 6 ' + t('photos_hint')); break; }
+        try { d.gallery.push(await imgToDataUrl(file, 1600, 0.72)); } catch (err) {}
+      }
+      e.target.value = '';
+      renderGallery();
+    };
+    // 🎥 YouTube links
+    const renderVideos = () => {
+      document.getElementById('video-list').innerHTML = d.videoLinks.map((v, i) =>
+        `<div class="kv"><span class="k">▶</span><span style="flex:1;font-size:.85rem;overflow:hidden;text-overflow:ellipsis">${esc(v.url)}</span>
+         <button type="button" class="btn btn-ghost btn-sm" data-vi="${i}">✕</button></div>`).join('');
+      document.querySelectorAll('[data-vi]').forEach((b) => b.onclick = () => { d.videoLinks.splice(Number(b.dataset.vi), 1); renderVideos(); });
+    };
+    renderVideos();
+    document.getElementById('r-video-add').onclick = () => {
+      const url = document.getElementById('r-video').value.trim();
+      const vid = ytVideoId(url);
+      if (!vid) return toast('⚠️ ' + t('video_hint'));
+      if (d.videoLinks.length >= 5) return toast('⚠️ 5');
+      d.videoLinks.push({ url, videoId: vid });
+      document.getElementById('r-video').value = '';
+      renderVideos();
+    };
   }
 
   const back = document.getElementById('r-back');
@@ -3935,6 +4859,8 @@ function viewRegister(view) {
   document.getElementById('r-next').onclick = () => {
     capture();
     if (step === 1 && (!d.name || !d.phone || d.phone.length < 10)) return toast('⚠️ ' + t('phone') + ' / ' + t('name_l'));
+    if (step === 1 && d.categoryId === 'others' && !(d.customService || '').trim()) return toast('⚠️ ' + t('custom_service'));
+    if (step === 2 && !d.state) return toast('⚠️ ' + t('state_l'));
     if (step === 2 && !d.address) return toast('⚠️ ' + t('address_l2'));
     if (step === 3) {
       return submitRegistration(view);
@@ -3953,7 +4879,7 @@ async function submitRegistration(view) {
     S.regDraft = {};
     viewRegister(view);
   } catch (e) {
-    toast(t('error_gen'));
+    toast(e.data?.hint || t('error_gen'));
   }
 }
 
@@ -4047,6 +4973,8 @@ async function viewEdit(view, id) {
           <input class="input" id="e-name" value="${esc(p.name)}"></div>
         <div class="field" style="margin-top:10px"><label class="label">${t('business_name')}</label>
           <input class="input" id="e-biz" value="${esc(p.businessName)}"></div>
+        ${p.categoryId === 'others' ? `<div class="field" style="margin-top:10px"><label class="label">${t('custom_service')}</label>
+          <input class="input" id="e-custom" value="${esc(p.customService || '')}" placeholder="${t('custom_service_ph')}"></div>` : ''}
         <div class="row-2" style="margin-top:10px">
           <div class="field"><label class="label">${t('phone')} *</label>
             <input class="input" id="e-phone" maxlength="10" value="${esc(p.phone)}"></div>
@@ -4074,6 +5002,19 @@ async function viewEdit(view, id) {
           <label class="photo-drop" for="e-photo">${icon('upload')}<b>${t('photo_hint')}</b></label>
           <input type="file" id="e-photo" accept="image/*" capture="environment" hidden>
           ${p.photo ? `<button class="btn btn-ghost btn-sm" id="e-photo-del">${t('remove_photo')}</button>` : ''}
+        </div>
+        <div class="field" style="margin-top:10px"><label class="label">📸 ${t('work_photos')}</label>
+          <div id="e-gallery" class="gallery-grid"></div>
+          <label class="photo-drop" for="e-gallery-file">${icon('upload')}<b>${t('add_photo')}</b><span class="hint">${t('photos_hint')}</span></label>
+          <input type="file" id="e-gallery-file" accept="image/*" multiple hidden>
+        </div>
+        <div class="field" style="margin-top:10px"><label class="label">🎥 ${t('videos_l')}</label>
+          <div style="display:flex;gap:8px">
+            <input class="input" id="e-video" placeholder="https://youtube.com/watch?v=…">
+            <button class="btn btn-ghost" id="e-video-add" type="button">${t('add_video')}</button>
+          </div>
+          <div class="hint">${t('video_hint')}</div>
+          <div id="e-video-list"></div>
         </div>
         <div class="field" style="margin-top:10px"><label class="label">${t('about')}</label>
           <textarea class="textarea" id="e-about" placeholder="${t('about_ph')}">${esc(p.about || '')}</textarea></div>
@@ -4104,6 +5045,53 @@ async function viewEdit(view, id) {
     toast('🗑');
   };
 
+  // 📸 Gallery management (turant upload/delete — save ki zaroorat nahi)
+  let gallery = (p.gallery || []).slice();
+  const renderGallery = () => {
+    document.getElementById('e-gallery').innerHTML = gallery.map((g, i) =>
+      `<div class="gallery-item"><img src="${g}" alt=""><button type="button" class="gallery-x" data-gi="${i}">✕</button></div>`).join('') || '<div class="hint">—</div>';
+    document.querySelectorAll('[data-gi]').forEach((b) => b.onclick = async () => {
+      if (!confirm(t('delete'))) return;
+      const idx = Number(b.dataset.gi);
+      try {
+        await API.del(`/me/providers/${id}/gallery/${idx}`);
+        gallery.splice(idx, 1); renderGallery(); toast('🗑');
+      } catch (e) { toast(t('error_gen')); }
+    });
+  };
+  renderGallery();
+  document.getElementById('e-gallery-file').onchange = async (e) => {
+    for (const file of [...e.target.files]) {
+      if (gallery.length >= 6) { toast('⚠️ 6'); break; }
+      try {
+        const url = await imgToDataUrl(file, 1600, 0.72);
+        await API.post(`/me/providers/${id}/gallery`, { photo: url });
+        gallery.push(url);
+      } catch (err) { toast(err.data?.hint || t('error_gen')); }
+    }
+    e.target.value = '';
+    renderGallery();
+  };
+
+  // 🎥 Video links (save ke time PUT honge)
+  let videos = (p.videoLinks || []).slice();
+  const renderVideos = () => {
+    document.getElementById('e-video-list').innerHTML = videos.map((v, i) =>
+      `<div class="kv"><span class="k">▶</span><span style="flex:1;font-size:.85rem;overflow:hidden;text-overflow:ellipsis">${esc(v.url)}</span>
+       <button type="button" class="btn btn-ghost btn-sm" data-evi="${i}">✕</button></div>`).join('');
+    document.querySelectorAll('[data-evi]').forEach((b) => b.onclick = () => { videos.splice(Number(b.dataset.evi), 1); renderVideos(); });
+  };
+  renderVideos();
+  document.getElementById('e-video-add').onclick = () => {
+    const url = document.getElementById('e-video').value.trim();
+    const vid = ytVideoId(url);
+    if (!vid) return toast('⚠️ ' + t('video_hint'));
+    if (videos.length >= 5) return toast('⚠️ 5');
+    videos.push({ url, videoId: vid });
+    document.getElementById('e-video').value = '';
+    renderVideos();
+  };
+
   document.getElementById('e-save').onclick = async () => {
     const body = {
       name: document.getElementById('e-name').value,
@@ -4118,7 +5106,10 @@ async function viewEdit(view, id) {
       about: document.getElementById('e-about').value,
       skills: document.getElementById('e-skills').value.split(',').map((x) => x.trim()).filter(Boolean),
       priceHint: document.getElementById('e-price').value,
+      videoLinks: videos,
     };
+    const customEl = document.getElementById('e-custom');
+    if (customEl) body.customService = customEl.value;
     if (newPhoto !== undefined) body.photo = newPhoto;
     try {
       await API.put('/providers/' + id, body);
@@ -4138,11 +5129,12 @@ async function viewAdmin(view, tab) {
     return;
   }
   S.adminTab = tab || S.adminTab || 'overview';
-  const tabs = ['overview', 'providers', 'categories', 'reports'];
+  const tabs = ['overview', 'providers', 'categories', 'reports', 'users', 'feedback'];
+  const tabLabel = { overview: 'a_overview', providers: 'a_providers', categories: 'a_categories', reports: 'a_reports', users: 'users_tab', feedback: 'feedback' };
   view.innerHTML = `
     <h2 style="margin:4px 0 12px">${t('admin_title')} 🛡️</h2>
     <div class="admin-tabs">
-      ${tabs.map((x) => `<button class="chip ${S.adminTab === x ? 'active' : ''}" onclick="location.hash='#/admin/${x}'">${t(x === 'overview' ? 'a_overview' : x === 'providers' ? 'a_providers' : x === 'categories' ? 'a_categories' : 'a_reports')}</button>`).join('')}
+      ${tabs.map((x) => `<button class="chip ${S.adminTab === x ? 'active' : ''}" onclick="location.hash='#/admin/${x}'">${t(tabLabel[x])}</button>`).join('')}
     </div>
     <div id="admin-body">${skeletons(2)}</div>`;
 
@@ -4151,11 +5143,79 @@ async function viewAdmin(view, tab) {
     if (S.adminTab === 'overview') await adminOverview(body);
     else if (S.adminTab === 'providers') await adminProviders(body);
     else if (S.adminTab === 'categories') await adminCategories(body);
+    else if (S.adminTab === 'users') await adminUsers(body);
+    else if (S.adminTab === 'feedback') await adminFeedback(body);
     else await adminReports(body);
   } catch (e) {
     body.innerHTML = `<div class="empty-state"><p>${t('error_gen')}</p></div>`;
   }
   window.scrollTo(0, 0);
+}
+
+/* ─── Admin: FEEDBACK inbox (app improvement) 💬 ─── */
+async function adminFeedback(body) {
+  const rows = await API.get('/admin/feedback');
+  body.innerHTML = `
+    <div class="hint" style="margin-bottom:10px">💬 Users/providers ka feedback — yahan se naye ideas milte hain!</div>
+    ${rows.length ? rows.map((f) => `
+      <div class="admin-row">
+        <div class="grow">
+          <b>${esc(f.userName || f.name || 'Anonymous')}</b>
+          <span class="badge badge-open">${f.type === 'provider' ? t('fb_provider') : f.type === 'user' ? t('fb_user') : t('fb_other')}</span>
+          <span class="stars">★${f.rating || 5}</span>
+          ${f.status === 'new' ? '<span class="badge badge-pending">NEW</span>' : '<span class="badge badge-verified">✓</span>'}<br>
+          <span class="tiny">${esc(f.contact || '')} · ${timeAgo(f.createdAt)}</span>
+          <div class="muted" style="margin-top:4px">${esc(f.message)}</div>
+        </div>
+        ${f.status === 'new' ? `<button class="btn btn-primary btn-sm" data-fbread="${f.id}">${t('resolve')}</button>` : ''}
+      </div>`).join('') : `<div class="empty-state">${icon('user')}<p>— ${t('no_reports')} —</p></div>`}`;
+  body.querySelectorAll('[data-fbread]').forEach((b) => b.onclick = async () => {
+    await API.post(`/admin/feedback/${b.dataset.fbread}/resolve`);
+    viewAdmin(document.getElementById('view'), 'feedback');
+  });
+}
+
+/* ─── Admin: USER MODERATION (block / suspend / delete) 🛡️ ─── */
+async function adminUsers(body) {
+  const users = await API.get('/admin/users');
+  const statusBadge = (s) => s === 'active' ? `<span class="badge badge-verified">${t('status_active')}</span>`
+    : s === 'suspended' ? `<span class="badge badge-pending">⏸ ${t('status_suspended')}</span>`
+    : s === 'blocked' ? `<span class="badge badge-rejected">🚫 ${t('status_blocked')}</span>`
+    : `<span class="badge badge-rejected">🗑 ${t('status_deleted')}</span>`;
+  body.innerHTML = `
+    <div class="hint" style="margin-bottom:10px">🛡️ Abuse / harassment / galat content par: Suspend (temporary), Block, ya Delete karein.</div>
+    ${users.map((u) => `
+      <div class="admin-row">
+        <div class="grow">
+          <b>${esc(u.name)}</b> ${statusBadge(u.status)} ${u.role === 'admin' ? '<span class="badge badge-verified">ADMIN</span>' : ''}<br>
+          <span class="tiny">+91 ${esc(u.phone || '—')}${u.googleEmail ? ' · ' + esc(u.googleEmail) : ''} · ${u.providerCount} listings · joined ${timeAgo(u.createdAt)}</span>
+        </div>
+        ${u.role === 'admin' ? '' : `
+          ${u.status === 'active' ? `
+            <button class="btn btn-ghost btn-sm" data-suspend="${u.id}">${t('suspend')}</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red)" data-block="${u.id}">${t('block')}</button>`
+          : `<button class="btn btn-primary btn-sm" data-activate="${u.id}">${t('activate')}</button>`}
+          <button class="btn btn-ghost btn-sm" style="color:var(--red)" data-deluser="${u.id}">${t('delete_user')}</button>`}
+      </div>`).join('')}`;
+  body.querySelectorAll('[data-suspend]').forEach((b) => b.onclick = async () => {
+    if (!confirm(t('confirm_suspend'))) return;
+    await API.post(`/admin/users/${b.dataset.suspend}/status`, { status: 'suspended' });
+    toast(t('user_moderated')); viewAdmin(document.getElementById('view'), 'users');
+  });
+  body.querySelectorAll('[data-block]').forEach((b) => b.onclick = async () => {
+    if (!confirm(t('confirm_block'))) return;
+    await API.post(`/admin/users/${b.dataset.block}/status`, { status: 'blocked' });
+    toast(t('user_moderated')); viewAdmin(document.getElementById('view'), 'users');
+  });
+  body.querySelectorAll('[data-activate]').forEach((b) => b.onclick = async () => {
+    await API.post(`/admin/users/${b.dataset.activate}/status`, { status: 'active' });
+    toast(t('user_moderated')); viewAdmin(document.getElementById('view'), 'users');
+  });
+  body.querySelectorAll('[data-deluser]').forEach((b) => b.onclick = async () => {
+    if (!confirm(t('confirm_delete_user'))) return;
+    await API.del(`/admin/users/${b.dataset.deluser}`);
+    toast(t('user_moderated')); viewAdmin(document.getElementById('view'), 'users');
+  });
 }
 
 async function adminOverview(body) {
@@ -4371,7 +5431,7 @@ async function adminCategories(body) {
     <div id="c-form"></div>
     ${rows.map((c) => `
       <div class="admin-row">
-        <span class="cat-ico" style="background:${CAT_COLORS[c.id] || '#F59E0B'};width:38px;height:38px">${icon(c.icon || 'wrench')}</span>
+        <span class="cat-ico" style="background:${CAT_COLORS[c.id] || '#F59E0B'};width:38px;height:38px">${catIconHtml(c.icon, c.iconImage)}</span>
         <div class="grow"><b>${esc(c.name_en)}</b> · ${esc(c.name_hi)}<br>
           <span class="tiny">${(c.subcategories || []).map((s) => esc(s.name_en)).join(' · ')}</span></div>
         <div class="admin-actions">
@@ -4433,66 +5493,224 @@ async function adminReports(body) {
     viewAdmin(document.getElementById('view'), 'reports');
   });
 }
+
+/* ───────────── ABOUT US + CONTACT US (app developers ke liye) ───────────── */
+function viewAbout(view) {
+  view.innerHTML = `
+    <div class="panel">
+      <h2 style="margin:0 0 8px">ℹ️ ${t('about_us')}</h2>
+      <p><b>Labors Near Me</b> — Bharat ke har sheher me kaam karne wale bharosemand logon ko dhoondhne ka aasaan tareeka. 🇮🇳</p>
+      <p class="muted">Electrician, plumber, tailor, doctor, driver — jo chahiye, apne aas-paas GPS se ya city/state chun kar. Seedha call, WhatsApp, directions. Koi commission nahi, koi beech ka aadmi nahi.</p>
+      <ul style="padding-left:18px;line-height:2">
+        <li>🎯 Hyperlocal search — distance ke hisaab se</li>
+        <li>✅ Verified providers + asli reviews</li>
+        <li>📱 Low bandwidth — 2G/3G par bhi tez</li>
+        <li>🗣️ Hindi + English</li>
+        <li>🆓 Providers ke liye listing bilkul FREE</li>
+      </ul>
+      <p class="tiny muted">Version 2.0 · Made in India with ❤️</p>
+    </div>
+    <a class="btn btn-primary btn-block" href="#/contact">${t('contact_us')}</a>`;
+  window.scrollTo(0, 0);
+}
+
+function viewFeedback(view) {
+  view.innerHTML = `
+    <div class="panel">
+      <h2 style="margin:0 0 8px">${t('feedback_title')}</h2>
+      <p class="muted">${t('feedback_sub')}</p>
+      <div class="form">
+        <div class="row-2">
+          <div class="field"><label class="label">${t('name_l')}</label>
+            <input class="input" id="fb-name" value="${esc((API.user || {}).name || '')}"></div>
+          <div class="field"><label class="label">${t('phone')} / Email</label>
+            <input class="input" id="fb-contact" value="${esc((API.user || {}).phone || '')}"></div>
+        </div>
+        <div class="field"><label class="label">${t('fb_type')}</label>
+          <select class="select" id="fb-type">
+            <option value="user">${t('fb_user')}</option>
+            <option value="provider">${t('fb_provider')}</option>
+            <option value="other">${t('fb_other')}</option>
+          </select></div>
+        <div class="field"><label class="label">⭐ ${t('fb_rating')}</label>
+          ${starInput('fb-rating')}</div>
+        <div class="field"><label class="label">${t('fb_msg')} *</label>
+          <textarea class="textarea" id="fb-msg" rows="5"></textarea></div>
+        <button class="btn btn-primary btn-block" id="fb-send">${t('submit')}</button>
+      </div>
+    </div>
+    <button class="btn btn-ghost btn-block" id="fb-share">${icon('share')} ${t('share_app2')}</button>`;
+  bindStarInput(view);
+  document.getElementById('fb-share').onclick = () => shareAppOrProvider(null);
+  document.getElementById('fb-send').onclick = async () => {
+    const message = document.getElementById('fb-msg').value.trim();
+    if (message.length < 5) return toast('⚠️ ' + t('fb_msg'));
+    const rating = Number(view.querySelector('[data-star-input]')?.dataset.val || 5);
+    try {
+      await API.post('/feedback', {
+        message, rating,
+        name: document.getElementById('fb-name').value,
+        contact: document.getElementById('fb-contact').value,
+        type: document.getElementById('fb-type').value,
+      });
+      toast(t('fb_sent'));
+      document.getElementById('fb-msg').value = '';
+    } catch (e) { toast(e.data?.hint || t('error_gen')); }
+  };
+  window.scrollTo(0, 0);
+}
+
+function viewContact(view) {
+  view.innerHTML = `
+    <div class="panel">
+      <h2 style="margin:0 0 8px">📞 ${t('contact_us')}</h2>
+      <p class="muted">Koi sawal, suggestion, ya complaint? Humein bataiye.</p>
+      <div class="form">
+        <div class="field"><label class="label">${t('name_l')}</label>
+          <input class="input" id="c-name" value="${esc((API.user || {}).name || '')}"></div>
+        <div class="field"><label class="label">${t('phone')} / Email</label>
+          <input class="input" id="c-contact" value="${esc((API.user || {}).phone || '')}"></div>
+        <div class="field"><label class="label">${t('your_msg')}</label>
+          <textarea class="textarea" id="c-msg" rows="4"></textarea></div>
+        <button class="btn btn-primary btn-block" id="c-send">${t('submit')}</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="kv"><span class="k">✉️</span><span>support@laborsnearme.in</span></div>
+      <div class="kv"><span class="k">📍</span><span>Indore, Madhya Pradesh, India</span></div>
+      <div class="kv"><span class="k">⏰</span><span>Mon–Sat · 10 AM – 7 PM</span></div>
+    </div>`;
+  document.getElementById('c-send').onclick = async () => {
+    const msg = document.getElementById('c-msg').value.trim();
+    if (!msg) return toast('⚠️ ' + t('your_msg'));
+    try {
+      await API.post('/reports', { targetType: 'user', targetId: 'platform', reason: 'CONTACT: ' + msg.slice(0, 200) });
+    } catch (e) {}
+    toast(t('contact_sent'));
+    document.getElementById('c-msg').value = '';
+  };
+  window.scrollTo(0, 0);
+}
+````
+
+## 📄 `web/js/firebase-config.js`
+
+````javascript
+/**
+ * firebase-config.js — Firebase Auth settings (REAL Phone OTP + Google login).
+ *
+ * ▶ DEMO MODE (abhi): neeche sab EMPTY hai — app demo OTP (123456) se chalta hai.
+ * ▶ REAL MODE: docs/FIREBASE_SETUP_HINDI.md follow karke Firebase Console se
+ *   ye 4 values copy karke yahan paste karo — Google + real OTP turant chalu!
+ *   (Web API key secret nahi hoti — par phir bhi repo me mat chhodo, config file
+ *    alag rakhna better hai.)
+ */
+window.LNM_FIREBASE = {
+  apiKey: '',            // Web API Key (Firebase Console → General)
+  authDomain: '',        // e.g. labors-near-me.firebaseapp.com
+  projectId: '',         // e.g. labors-near-me
+  appId: '',             // e.g. 1:1234567890:web:abcdef
+};
+````
+
+## 📄 `web/js/firebase-auth.js`
+
+````javascript
+/**
+ * firebase-auth.js — REAL Google + Phone OTP login via Firebase Auth (client side).
+ * Demo mode: jab tak firebase-config.js me values nahi hain, sab kuch pehle jaisa
+ * (OTP 123456 + demo Google). Config bharne par ye file REAL login chalu kar deti hai.
+ *
+ * Flow: Firebase se ID token → POST /api/auth/firebase → app ka apna session token.
+ */
+const LnmFirebase = (() => {
+  const cfg = window.LNM_FIREBASE || {};
+  const configured = !!(cfg.apiKey && cfg.projectId && cfg.appId);
+  let auth = null, loaded = false;
+
+  async function loadSdk() {
+    if (loaded) return;
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    auth = firebase.auth();
+    loaded = true;
+  }
+
+  async function toAppSession(fbUser) {
+    const idToken = await fbUser.getIdToken();
+    return API.post('/auth/firebase', { idToken, name: fbUser.displayName || '', cityId: S.cityId });
+  }
+
+  return {
+    get configured() { return configured; },
+
+    /** Google popup login → app session {token, user}. */
+    async google() {
+      if (!configured) throw Object.assign(new Error('not_configured'), { data: { error: 'firebase_not_configured' } });
+      await loadSdk();
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const cred = await auth.signInWithPopup(provider);
+      return toAppSession(cred.user);
+    },
+
+    /** Phone OTP start → returns confirmation (step 1). */
+    async phoneStart(phoneE164, buttonEl) {
+      if (!configured) throw Object.assign(new Error('not_configured'), { data: { error: 'firebase_not_configured' } });
+      await loadSdk();
+      if (!window._lnmRecaptcha) {
+        window._lnmRecaptcha = new firebase.auth.RecaptchaVerifier(buttonEl || 'login-go', { size: 'invisible' });
+      }
+      return auth.signInWithPhoneNumber(phoneE164, window._lnmRecaptcha);
+    },
+
+    /** Phone OTP verify (step 2) → app session {token, user}. */
+    async phoneVerify(confirmation, code) {
+      const cred = await confirmation.confirm(code);
+      return toAppSession(cred.user);
+    },
+  };
+})();
 ````
 
 ## 📄 `web/sw.js`
 
 ````javascript
 /**
- * sw.js — Service worker tuned for LOW-BANDWIDTH Indian networks.
- *  - Precaches the app shell (tiny vanilla JS — no framework payload).
- *  - GET /api responses: network-first with cache fallback (stale listings still show).
- *  - Static assets: cache-first (instant repeat loads on 2G/3G).
+ * sw.js — SELF-DESTRUCT service worker (cache cleaner).
+ *
+ * Pehle app offline-cache use karti thi — par usme purane version phans jaate
+ * the (naye features dikhne me dikkat). Ye naya "worker" aate hi:
+ *   1) saara purana cache DELETE karta hai
+ *   2) khud ko unregister (band) karta hai
+ *   3) khule pages ko fresh reload karta hai
+ * Result: hamesha naya version dikhega. ✅
  */
-const CACHE = 'lnm-v2';
-const SHELL = [
-  '/', '/index.html', '/css/app.css',
-  '/js/i18n.js', '/js/api.js', '/js/app.js',
-  '/manifest.webmanifest',
-  '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',
-  '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png', '/icons/apple-touch-icon.png',
-];
-
-self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
-});
+self.addEventListener('install', () => { self.skipWaiting(); });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
-  if (e.request.method !== 'GET') return;
-
-  // Map tiles & external links: straight to network, no caching (they're huge)
-  if (url.origin !== location.origin) return;
-
-  if (url.pathname.startsWith('/api/')) {
-    // Network-first API: fresh data when online, cached fallback when not
-    e.respondWith(
-      fetch(e.request)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
-          return res;
-        })
-        .catch(() => caches.match(e.request))
-    );
-    return;
-  }
-
-  // Static: cache-first
-  e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
-      return res;
-    }).catch(() => caches.match('/index.html')))
-  );
+  e.waitUntil((async () => {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    } catch (err) {}
+    try { await self.registration.unregister(); } catch (err) {}
+    try {
+      const clientsList = await self.clients.matchAll();
+      clientsList.forEach((c) => { try { c.navigate(c.url); } catch (err) {} });
+    } catch (err) {}
+  })());
 });
 ````
 
@@ -4654,9 +5872,9 @@ function check(name, cond, extra) {
 
   console.log('— public —');
   const cats = await call('GET', '/categories');
-  check('categories = 16', cats.length === 16);
+  check('categories = 18', cats.length === 18);
   const cities = await call('GET', '/cities');
-  check('cities = 10', cities.length === 10);
+  check('cities = 13', cities.length === 13);
 
   const near = await call('GET', '/providers/nearby?cityId=indore&q=tailor&sort=distance');
   check('nearby tailor search', near.results.length > 0, JSON.stringify(near).slice(0, 100));
@@ -4780,6 +5998,53 @@ function check(name, cond, extra) {
   try { await call('GET', `/providers/${seedPendingId}`); check('anon view of unverified → 404', false); }
   catch (e) { check('anon view of unverified → 404', e.status === 404); }
 
+  console.log('— v2: PAN India + profile + media + moderation —');
+  const states = await call('GET', '/states');
+  check('states = 36 (28 states + 8 UTs)', states.length === 36);
+  const mp = states.find((s) => s.state === 'Madhya Pradesh');
+  check('MP has districts incl. Indore', mp && mp.districts.includes('Indore') && mp.districts.length >= 50);
+  // profile (name/bio/about/address/state/district)
+  const prof = await call('PUT', '/me/profile', { name: 'Test Updated', bio: 'BIO', about: 'ABOUT', address: 'ADDR', state: 'Madhya Pradesh', district: 'Indore' });
+  check('profile update', prof.user.bio === 'BIO' && prof.user.district === 'Indore');
+  // register with 'others' + customService
+  const reg2 = await call('POST', '/providers/register', {
+    name: 'Custom Worker', phone: '9812345678', categoryId: 'others',
+    customService: 'RO Repair', cityId: 'indore', state: 'Madhya Pradesh', district: 'Indore', address: 'Test Rd',
+    gallery: ['data:image/png;base64,AAAA'], videoLinks: ['https://youtu.be/dQw4w9WgXcQ'],
+  });
+  check('others + customService register', reg2.provider && reg2.provider.id);
+  const prv2 = await call('GET', `/providers/${reg2.provider.id}?preview=1`);
+  check('customService stored', prv2.customService === 'RO Repair');
+  check('gallery stored', prv2.gallery.length === 1);
+  check('video parsed', prv2.videoLinks[0].videoId === 'dQw4w9WgXcQ');
+  // gallery add/remove
+  await call('POST', `/me/providers/${reg2.provider.id}/gallery`, { photo: 'data:image/png;base64,BBBB' });
+  const prv3 = await call('GET', `/providers/${reg2.provider.id}?preview=1`);
+  check('gallery add', prv3.gallery.length === 2);
+  await call('DELETE', `/me/providers/${reg2.provider.id}/gallery/1`);
+  const prv4 = await call('GET', `/providers/${reg2.provider.id}?preview=1`);
+  check('gallery remove', prv4.gallery.length === 1);
+  // videos PUT
+  await call('PUT', `/me/providers/${reg2.provider.id}/videos`, { links: ['https://youtube.com/watch?v=abcdefghij'] });
+  const prv5 = await call('GET', `/providers/${reg2.provider.id}?preview=1`);
+  check('videos PUT', prv5.videoLinks.length === 1 && prv5.videoLinks[0].videoId === 'abcdefghij');
+  // feedback
+  await call('POST', '/feedback', { message: 'Dark mode add karo', name: 'Tester', type: 'user', rating: 5 });
+  API.token = admin.token; API.user = admin.user;
+  const fbs = await call('GET', '/admin/feedback');
+  check('feedback inbox', fbs.length === 1 && fbs[0].message.includes('Dark mode'));
+  // admin moderation
+  const users = await call('GET', '/admin/users');
+  check('admin users list', Array.isArray(users) && users.length > 2);
+  const victim = users.find((x) => x.name === 'Test Updated');
+  await call('POST', `/admin/users/${victim.id}/status`, { status: 'blocked', reason: 'abuse test' });
+  const users2 = await call('GET', '/admin/users');
+  check('user blocked', users2.find((x) => x.id === victim.id).status === 'blocked');
+  await call('DELETE', `/admin/users/${victim.id}`);
+  const users3 = await call('GET', '/admin/users');
+  check('user deleted', !users3.find((x) => x.id === victim.id));
+  // blocked user providers are gone too → gallery provider belonged to victim? (Test Updated owns Custom Worker)
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();
@@ -4791,7 +6056,7 @@ function check(name, cond, extra) {
 name: labors_near_me
 description: "Labors Near Me — लेबर्स नियर मी. Find trusted workers near you."
 publish_to: "none"
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -4803,22 +6068,25 @@ dependencies:
   geolocator: ^12.0.0          # GPS "near me"
   url_launcher: ^6.3.0         # tel: · wa.me · google maps directions
   shared_preferences: ^2.2.0   # token / lang / city / favorites cache
+  share_plus: ^10.0.0          # "Share this App" (WhatsApp etc.)
+  image_picker: ^1.1.2         # profile photo (system photo picker)
 
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.13.1
 
-# App icon → launcher icons for Android + iOS (run: dart run flutter_launcher_icons)
+# App icon → launcher icons (run: dart run flutter_launcher_icons)
+# ios: false for now — enable when you build for Apple (needs ios/ folder first)
 flutter_launcher_icons:
   android: true
-  ios: true
+  ios: false
   image_path: "assets/icon.png"
-  remove_alpha_ios: true
 
 flutter:
   uses-material-design: true
   assets:
     - assets/icon.png
+    - assets/icons/
 ````
 
 ## 📄 `mobile/lib/main.dart`
@@ -4909,7 +6177,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiClient {
   static const String apiBase = String.fromEnvironment(
     'API_BASE',
-    defaultValue: 'https://YOUR-API-URL.onrender.com', // ← replace with your URL
+    defaultValue: 'https://labors-near-me.onrender.com', // ← live backend (Render)
   );
   static String? token;       // set after OTP login
   static String? userName;    // cached display name
@@ -5083,6 +6351,40 @@ const Map<String, Map<String, String>> _dict = {
     'lead_from': 'Lead from',
     'no_leads': 'No leads yet.',
     'no_listings': 'No listings yet. Register your services!',
+    // v2 mirror — profile / feedback / share / about / contact
+    'my_profile': 'My Profile',
+    'bio_l': 'Bio',
+    'about_me': 'About me',
+    'address_opt': 'Address',
+    'state_l': 'State',
+    'district_l': 'District',
+    'select_state': 'Select state',
+    'select_district': 'Select district',
+    'photo_l': 'Photo',
+    'add_photo': 'Add photo',
+    'change_photo': 'Change photo',
+    'remove_photo': 'Remove',
+    'custom_service': 'Your service name',
+    'custom_service_hint': 'e.g. RO Water Purifier Repair',
+    'feedback_l': 'Feedback',
+    'feedback_title': 'Feedback',
+    'feedback_sub': 'How was your experience? Your feedback improves the app.',
+    'fb_type': 'Feedback type',
+    'fb_user': 'As a user',
+    'fb_provider': 'As a provider',
+    'fb_other': 'Other',
+    'fb_rating': 'Your rating',
+    'fb_msg': 'Message',
+    'feedback_sent': 'Feedback mil gaya — shukriya! 🙏',
+    'share_app': 'Share this App',
+    'share_text': 'Labors Near Me — find trusted workers near you. Download now:',
+    'about_us': 'About Us',
+    'contact_us': 'Contact Us',
+    'contact_msg': 'Your message',
+    'send': 'Send',
+    'sent_ok': 'Sent ✓',
+    'gallery': 'Photos',
+    'videos': 'Videos',
   },
   'hi': {
     'app_name': 'लेबर्स नियर मी',
@@ -5165,8 +6467,187 @@ const Map<String, Map<String, String>> _dict = {
     'lead_from': 'लीड',
     'no_leads': 'अभी कोई लीड नहीं।',
     'no_listings': 'अभी कोई लिस्टिंग नहीं — अपनी सेवा रजिस्टर करें!',
+    // v2 mirror — profile / feedback / share / about / contact
+    'my_profile': 'मेरी प्रोफ़ाइल',
+    'bio_l': 'परिचय',
+    'about_me': 'मेरे बारे में',
+    'address_opt': 'पता',
+    'state_l': 'राज्य',
+    'district_l': 'जिला',
+    'select_state': 'राज्य चुनें',
+    'select_district': 'जिला चुनें',
+    'photo_l': 'फ़ोटो',
+    'add_photo': 'फ़ोटो जोड़ें',
+    'change_photo': 'फ़ोटो बदलें',
+    'remove_photo': 'हटाएँ',
+    'custom_service': 'अपनी सेवा का नाम',
+    'custom_service_hint': 'जैसे: RO वॉटर प्यूरिफायर रिपेयर',
+    'feedback_l': 'फ़ीडबैक',
+    'feedback_title': 'फ़ीडबैक',
+    'feedback_sub': 'आपका अनुभव कैसा रहा? आपका फ़ीडबैक ऐप को बेहतर बनाता है।',
+    'fb_type': 'फ़ीडबैक प्रकार',
+    'fb_user': 'यूज़र के रूप में',
+    'fb_provider': 'प्रोवाइडर के रूप में',
+    'fb_other': 'अन्य',
+    'fb_rating': 'आपकी रेटिंग',
+    'fb_msg': 'संदेश',
+    'feedback_sent': 'फ़ीडबैक मिल गया — शुक्रिया! 🙏',
+    'share_app': 'ऐप शेयर करें',
+    'share_text': 'Labors Near Me — अपने पास भरोसेमंद कामगार खोजें। अभी डाउनलोड करें:',
+    'about_us': 'हमारे बारे में',
+    'contact_us': 'संपर्क करें',
+    'contact_msg': 'आपका संदेश',
+    'send': 'भेजें',
+    'sent_ok': 'भेज दिया ✓',
+    'gallery': 'फ़ोटो',
+    'videos': 'वीडियो',
   },
 };
+````
+
+## 📄 `mobile/lib/core/widgets.dart`
+
+````dart
+// widgets.dart — shared UI helpers (avatar, stars, badges, category icons/colours).
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import '../core/i18n.dart';
+
+const Map<String, Color> kCatColors = {
+  'electrician': Color(0xFFF59E0B),
+  'engineer': Color(0xFF0EA5E9),
+  'tailor': Color(0xFFEC4899),
+  'dry-cleaner': Color(0xFF8B5CF6),
+  'raj-mistri': Color(0xFFB45309),
+  'bhandara-catering': Color(0xFFDC2626),
+  'plumber': Color(0xFF2563EB),
+  'carpenter': Color(0xFF92400E),
+  'painter': Color(0xFF7C3AED),
+  'safai-karamchari': Color(0xFF059669),
+  'ac-fridge-repair': Color(0xFF0891B2),
+  'driver': Color(0xFF4F46E5),
+  'mobile-repair': Color(0xFFE11D48),
+  'beautician': Color(0xFFDB2777),
+  'cook': Color(0xFFEA580C),
+  'mali': Color(0xFF16A34A),
+  'medical': Color(0xFFDC2626),
+  'others': Color(0xFF64748B),
+};
+
+IconData catIcon(String icon) {
+  switch (icon) {
+    case 'bolt': return Icons.bolt;
+    case 'helmet': return Icons.engineering;
+    case 'scissors': return Icons.content_cut;
+    case 'hanger': return Icons.dry_cleaning;
+    case 'brick': return Icons.view_module;
+    case 'pot': return Icons.soup_kitchen;
+    case 'wrench': return Icons.build;
+    case 'hammer': return Icons.construction;
+    case 'brush': return Icons.format_paint;
+    case 'broom': return Icons.cleaning_services;
+    case 'snow': return Icons.ac_unit;
+    case 'wheel': return Icons.directions_car;
+    case 'mobile': return Icons.phone_android;
+    case 'comb': return Icons.brush;
+    case 'chef': return Icons.restaurant;
+    case 'leaf': return Icons.park;
+    case 'medical': return Icons.medical_services;
+    case 'shirt': return Icons.checkroom;
+    case 'toolbox': return Icons.handyman;
+    default: return Icons.handyman;
+  }
+}
+
+Color catColor(String categoryId) => kCatColors[categoryId] ?? const Color(0xFFF59E0B);
+
+/// User-uploaded category icon images (white artwork — web/icons se copy kiye).
+/// Web jaisa dikhe: colored rounded square + white icon.
+const Map<String, String> kCatImages = {
+  'tailor': 'assets/icons/cat-tailor-white.png',
+  'beautician': 'assets/icons/cat-beautician-white.png',
+  'medical': 'assets/icons/cat-medical-white.png',
+};
+
+Widget catIconWidget(String categoryId, String icon, {double size = 28, Color? color}) {
+  final asset = kCatImages[categoryId];
+  if (asset != null) {
+    return Image.asset(asset, width: size, height: size, fit: BoxFit.contain);
+  }
+  return Icon(catIcon(icon), color: color ?? catColor(categoryId), size: size);
+}
+
+/// data:image/...;base64,... → MemoryImage; http(s) → NetworkImage; else null.
+ImageProvider? dataUrlImage(String? s) {
+  if (s == null || s.isEmpty) return null;
+  if (s.startsWith('data:image')) {
+    try {
+      return MemoryImage(base64Decode(s.split(',').last));
+    } catch (_) {
+      return null;
+    }
+  }
+  return NetworkImage(s);
+}
+
+/// Low-bandwidth monogram avatar (no image download) — same as web.
+Widget monogramAvatar(String name, String categoryId, {String? photo, double size = 56}) {
+  final img = dataUrlImage(photo);
+  if (img != null) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image(image: img, width: size, height: size, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => monogramAvatar(name, categoryId, size: size)),
+    );
+  }
+  final color = catColor(categoryId);
+  final initials = name.trim().isEmpty
+      ? '?'
+      : name.trim().split(RegExp(r'\s+')).map((w) => w[0]).take(2).join().toUpperCase();
+  return Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.16),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    alignment: Alignment.center,
+    child: Text(initials,
+        style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: size * 0.34)),
+  );
+}
+
+Widget starsRow(double avg, int count, {double fontSize = 12}) {
+  final full = avg.round();
+  return Row(mainAxisSize: MainAxisSize.min, children: [
+    Text(List.filled(full.clamp(0, 5), '★').join() + List.filled((5 - full).clamp(0, 5), '☆').join(),
+        style: TextStyle(color: const Color(0xFFB45309), fontSize: fontSize + 1)),
+    const SizedBox(width: 4),
+    Text('${avg.toStringAsFixed(1)}', style: TextStyle(fontWeight: FontWeight.w700, fontSize: fontSize)),
+    Text('  ($count ${t('reviews')})',
+        style: TextStyle(color: const Color(0xFFA8A29E), fontSize: fontSize - 1)),
+  ]);
+}
+
+Widget statusBadge(String verified) {
+  if (verified == 'verified') {
+    return _badge(t('verified'), const Color(0xFFFEF3C7), const Color(0xFFB45309));
+  }
+  if (verified == 'pending') {
+    return _badge(t('pending'), const Color(0xFFFEE2E2), const Color(0xFFDC2626));
+  }
+  return _badge(t('rejected'), const Color(0xFFE7E5E4), const Color(0xFF57534E));
+}
+
+Widget openBadge(bool isOpen) => isOpen
+    ? _badge(t('open'), const Color(0xFFD1FAE5), const Color(0xFF059669))
+    : _badge(t('closed'), const Color(0xFFE7E5E4), const Color(0xFF57534E));
+
+Widget _badge(String text, Color bg, Color fg) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      child: Text(text, style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700)),
+    );
 ````
 
 ## 📄 `mobile/lib/models.dart`
@@ -5174,8 +6655,10 @@ const Map<String, Map<String, String>> _dict = {
 ````dart
 // models.dart — JSON models matching the REST API shapes (backend/src/routes/*).
 class CategoryModel {
-  CategoryModel(this.id, this.nameEn, this.nameHi, this.icon, this.subcategories);
-  final String id, nameEn, nameHi, icon;
+  CategoryModel(this.id, this.nameEn, this.nameHi, this.icon, this.iconImage,
+      this.customAllowed, this.subcategories);
+  final String id, nameEn, nameHi, icon, iconImage;
+  final bool customAllowed;
   final List<Subcategory> subcategories;
 
   factory CategoryModel.fromJson(Map<String, dynamic> j) => CategoryModel(
@@ -5183,6 +6666,8 @@ class CategoryModel {
         j['name_en'] ?? '',
         j['name_hi'] ?? '',
         j['icon'] ?? 'wrench',
+        j['iconImage'] ?? '',
+        j['customAllowed'] ?? false,
         ((j['subcategories'] ?? []) as List)
             .map((s) => Subcategory(s['id'] ?? '', s['name_en'] ?? '', s['name_hi'] ?? ''))
             .toList(),
@@ -5214,15 +6699,23 @@ class ProviderModel {
         categoryNameEn = j['categoryNameEn'] ?? '',
         categoryNameHi = j['categoryNameHi'] ?? '',
         categoryIcon = j['categoryIcon'] ?? 'wrench',
+        categoryIconImage = j['categoryIconImage'] ?? '',
+        customService = j['customService'] ?? '',
         phone = j['phone'] ?? '',
         whatsapp = j['whatsapp'] ?? j['phone'] ?? '',
         photo = j['photo'],
         about = j['about'] ?? '',
         skills = List<String>.from(j['skills'] ?? []),
+        gallery = List<String>.from(j['gallery'] ?? []),
+        videoLinks = ((j['videoLinks'] ?? []) as List)
+            .map((v) => v is Map ? (v['url'] ?? '').toString() : v.toString())
+            .toList(),
         priceHint = j['priceHint'] ?? '',
         addressLine = (j['address'] ?? {})['line1'] ?? '',
         area = (j['address'] ?? {})['area'] ?? '',
         cityId = (j['address'] ?? {})['cityId'] ?? '',
+        stateName = (j['address'] ?? {})['state'] ?? '',
+        districtName = (j['address'] ?? {})['district'] ?? '',
         lat = ((j['location'] ?? {})['lat'] ?? 0).toDouble(),
         lng = ((j['location'] ?? {})['lng'] ?? 0).toDouble(),
         isOpenNow = j['isOpenNow'] ?? true,
@@ -5233,9 +6726,10 @@ class ProviderModel {
         distanceText = j['distanceText'] ?? '';
 
   final String id, name, businessName, categoryId, categoryNameEn, categoryNameHi, categoryIcon;
-  final String phone, whatsapp, about, priceHint, addressLine, area, cityId;
+  final String categoryIconImage, customService;
+  final String phone, whatsapp, about, priceHint, addressLine, area, cityId, stateName, districtName;
   final String? photo;
-  final List<String> skills;
+  final List<String> skills, gallery, videoLinks;
   final double lat, lng, ratingAvg;
   final bool isOpenNow;
   final String verified;
@@ -5529,9 +7023,13 @@ class _HomeBodyState extends State<HomeBody> {
                               width: 54,
                               height: 54,
                               decoration: BoxDecoration(
-                                  color: catColor(c.id).withOpacity(0.14),
+                                  color: kCatImages.containsKey(c.id)
+                                      ? catColor(c.id)
+                                      : catColor(c.id).withOpacity(0.14),
                                   borderRadius: BorderRadius.circular(14)),
-                              child: Icon(catIcon(c.icon), color: catColor(c.id), size: 28),
+                              alignment: Alignment.center,
+                              child: catIconWidget(c.id, c.icon,
+                                  size: kCatImages.containsKey(c.id) ? 34 : 28),
                             ),
                             const SizedBox(height: 4),
                             Text(locName(c.nameEn, c.nameHi),
@@ -6043,6 +7541,13 @@ class _DetailScreenState extends State<DetailScreen> {
           const SizedBox(height: 4),
           Text(w.about, style: const TextStyle(color: Color(0xFF57534E))),
         ],
+        if (w.customService.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Chip(
+            label: Text(w.customService, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            backgroundColor: const Color(0xFFD1FAE5),
+          ),
+        ],
         if (w.skills.isNotEmpty) ...[
           const SizedBox(height: 12),
           Wrap(
@@ -6055,6 +7560,49 @@ class _DetailScreenState extends State<DetailScreen> {
                     ))
                 .toList(),
           ),
+        ],
+        // 📸 kaam ki photos
+        if (w.gallery.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(t('gallery'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 110,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: w.gallery.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) {
+                final img = dataUrlImage(w.gallery[i]);
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: img == null
+                      ? Container(width: 140, color: const Color(0xFFE7E5E4))
+                      : Image(image: img, width: 140, height: 110, fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              Container(width: 140, color: const Color(0xFFE7E5E4))),
+                );
+              },
+            ),
+          ),
+        ],
+        // 🎥 YouTube videos
+        if (w.videoLinks.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(t('videos'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 8),
+          ...w.videoLinks.map((url) => Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: const Icon(Icons.play_circle_fill, color: Color(0xFFDC2626), size: 36),
+                  title: Text(url, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onTap: () async {
+                    try {
+                      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                    } catch (_) {}
+                  },
+                ),
+              )),
         ],
         const SizedBox(height: 20),
         // reviews
@@ -6076,7 +7624,7 @@ class _DetailScreenState extends State<DetailScreen> {
                   Expanded(
                       child: Text(r.userName,
                           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
-                  Text('★' * r.rating.round(),
+                  Text(List.filled(r.rating.round().clamp(0, 5), '★').join(),
                       style: const TextStyle(color: Color(0xFFF59E0B), fontSize: 13)),
                 ]),
                 subtitle: Text(r.text),
@@ -6098,71 +7646,6 @@ class _DetailScreenState extends State<DetailScreen> {
 }
 ````
 
-## 📄 `mobile/lib/screens/login_screen.dart`
-
-````dart
-// login_screen.dart — phone OTP (demo OTP 123456 until MSG91 is configured on the API).
-import 'package:flutter/material.dart';
-
-import '../core/api_client.dart';
-import '../core/i18n.dart';
-import '../main.dart';
-
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
-  final phone = TextEditingController();
-  final otp = TextEditingController(text: '123456');
-  final name = TextEditingController();
-  bool step2 = false;
-
-  Future<void> _go() async {
-    try {
-      if (!step2) {
-        await ApiClient.post('/auth/request-otp', {'phone': phone.text});
-        setState(() => step2 = true);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OTP: 123456 (demo)')));
-      } else {
-        final r = await ApiClient.post('/auth/verify-otp', {
-          'phone': phone.text, 'code': otp.text, 'name': name.text,
-        });
-        ApiClient.token = r['token'];
-        Session.token = r['token'];
-        Session.userName = r['user']?['name'];
-        if (mounted) Navigator.pop(context);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(I18n.t('login'))),
-      body: ListView(padding: const EdgeInsets.all(18), children: [
-        Text(I18n.t('demo_note'), style: const TextStyle(color: Color(0xFFB45309), fontWeight: FontWeight.w700)),
-        const SizedBox(height: 16),
-        TextField(controller: phone, keyboardType: TextInputType.phone, maxLength: 10,
-          decoration: InputDecoration(labelText: I18n.t('phone'), prefixText: '+91 ')),
-        if (step2) ...[
-          TextField(controller: name, decoration: const InputDecoration(labelText: 'Name / नाम')),
-          const SizedBox(height: 12),
-          TextField(controller: otp, keyboardType: TextInputType.number, maxLength: 6,
-            decoration: InputDecoration(labelText: I18n.t('otp_ph'))),
-        ],
-        const SizedBox(height: 16),
-        FilledButton(onPressed: _go, child: Text(step2 ? I18n.t('verify') : I18n.t('login'))),
-      ]),
-    );
-  }
-}
-````
-
 ## 📄 `mobile/lib/screens/register_screen.dart`
 
 ````dart
@@ -6170,7 +7653,6 @@ class _LoginScreenState extends State<LoginScreen> {
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/i18n.dart';
-import '../core/widgets.dart';
 import '../main.dart';
 import '../models.dart';
 
@@ -6193,13 +7675,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _skills = TextEditingController();
   final _price = TextEditingController();
   final _kyc = TextEditingController();
+  final _customService = TextEditingController();
 
   List<CategoryModel> cats = [];
   List<CityModel> cities = [];
+  List<Map<String, dynamic>> states = [];
   String? categoryId;
   String? subcategory;
   String? cityId;
+  String? stateName;
+  String? districtName;
   bool busy = false;
+
+  List<String> get _districts {
+    for (final s in states) {
+      if (s['state'] == stateName) return List<String>.from(s['districts'] ?? []);
+    }
+    return [];
+  }
 
   @override
   void initState() {
@@ -6213,9 +7706,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final results = await Future.wait([
         ApiClient.get('/categories'),
         ApiClient.get('/cities'),
+        ApiClient.get('/states'),
       ]);
       cats = (results[0] as List).map((c) => CategoryModel.fromJson(c)).toList();
       cities = (results[1] as List).map((c) => CityModel.fromJson(c)).toList();
+      states = ((results[2] as List)).map((s) => {
+            'state': (s['state'] ?? '').toString(),
+            'districts': s['districts'] ?? [],
+          }).toList();
     } catch (_) {}
     if (mounted) setState(() {});
   }
@@ -6234,9 +7732,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
         'businessName': _business.text.trim().isEmpty ? _name.text.trim() : _business.text.trim(),
         'categoryId': categoryId,
         'subcategory': subcategory,
+        'customService': _customService.text.trim(),
         'phone': _phone.text.trim(),
         'whatsapp': _whatsapp.text.trim().isEmpty ? _phone.text.trim() : _whatsapp.text.trim(),
         'cityId': cityId,
+        'state': stateName ?? '',
+        'district': districtName ?? '',
         'area': _area.text.trim(),
         'address': _address.text.trim(),
         'pincode': _pincode.text.trim(),
@@ -6323,6 +7824,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             const SizedBox(height: 12),
           ],
+          // 'Others' category → provider apni service ka naam khud likhta hai
+          if (cats.where((c) => c.id == categoryId && c.customAllowed).isNotEmpty) ...[
+            TextFormField(
+              controller: _customService,
+              maxLength: 60,
+              decoration: InputDecoration(
+                  labelText: '${t('custom_service')} *',
+                  hintText: t('custom_service_hint'),
+                  counterText: ''),
+              validator: (v) {
+                final isCustom = cats.where((c) => c.id == categoryId && c.customAllowed).isNotEmpty;
+                return (isCustom && (v == null || v.trim().isEmpty)) ? t('custom_service') : null;
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(children: [
             Expanded(
               child: TextFormField(
@@ -6354,6 +7871,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 .toList(),
             onChanged: (v) => setState(() => cityId = v),
           ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: stateName,
+                decoration: InputDecoration(labelText: t('state_l')),
+                items: [
+                  DropdownMenuItem<String>(value: null, child: Text(t('select_state'))),
+                  ...states.map((s) => DropdownMenuItem<String>(
+                      value: s['state'] as String, child: Text(s['state'] as String))),
+                ],
+                onChanged: (v) => setState(() {
+                  stateName = v;
+                  districtName = null;
+                }),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: districtName,
+                decoration: InputDecoration(labelText: t('district_l')),
+                items: [
+                  DropdownMenuItem<String>(value: null, child: Text(t('select_district'))),
+                  ..._districts.map((d) =>
+                      DropdownMenuItem<String>(value: d, child: Text(d, overflow: TextOverflow.ellipsis))),
+                ],
+                onChanged: (v) => setState(() => districtName = v),
+              ),
+            ),
+          ]),
           const SizedBox(height: 12),
           TextFormField(
             controller: _area,
@@ -6402,6 +7950,837 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: 24),
         ]),
       ),
+    );
+  }
+}
+````
+
+## 📄 `mobile/lib/screens/account_screen.dart`
+
+````dart
+// account_screen.dart — login (phone OTP + demo Google) / account hub (dashboard,
+// register as provider, profile, feedback, about, contact, share, language, logout).
+import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../core/api_client.dart';
+import '../core/i18n.dart';
+import '../main.dart';
+import 'about_screen.dart';
+import 'contact_screen.dart';
+import 'dashboard_screen.dart';
+import 'feedback_screen.dart';
+import 'profile_edit_screen.dart';
+import 'register_screen.dart';
+
+class AccountBody extends StatefulWidget {
+  const AccountBody({super.key});
+  @override
+  State<AccountBody> createState() => _AccountBodyState();
+}
+
+class _AccountBodyState extends State<AccountBody> {
+  final _phone = TextEditingController();
+  final _otp = TextEditingController();
+  final _name = TextEditingController();
+  bool _otpStage = false;
+  bool _busy = false;
+
+  Future<void> _requestOtp() async {
+    final phone = _phone.text.replaceAll(RegExp(r'\D'), '');
+    if (phone.length != 10) return;
+    setState(() => _busy = true);
+    try {
+      await ApiClient.post('/auth/request-otp', {'phone': phone});
+      _otp.text = '123456'; // demo mode pre-fill (production: real SMS)
+      setState(() => _otpStage = true);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(t('otp_sent'))));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text((e is ApiException && e.hint != null) ? e.hint! : t('error_gen'))));
+      }
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _verify() async {
+    setState(() => _busy = true);
+    try {
+      final r = await ApiClient.post('/auth/verify-otp', {
+        'phone': _phone.text.replaceAll(RegExp(r'\D'), ''),
+        'code': _otp.text.trim(),
+        'name': _name.text.trim(),
+        'cityId': cityNotifier.value,
+      });
+      await ApiClient.saveSession(r['token'], (r['user'] ?? {})['name'] ?? '');
+      if (mounted) setState(() {});
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(t('error_gen'))));
+      }
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _google() async {
+    setState(() => _busy = true);
+    try {
+      final r = await ApiClient.post(
+          '/auth/google', {'name': 'Google User', 'email': 'demo.user@gmail.com'});
+      await ApiClient.saveSession(r['token'], (r['user'] ?? {})['name'] ?? '');
+      if (mounted) setState(() {});
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(t('error_gen'))));
+      }
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _logout() async {
+    try {
+      await ApiClient.post('/auth/logout');
+    } catch (_) {}
+    await ApiClient.clearSession();
+    if (mounted) setState(() {});
+  }
+
+  void _toggleLang() {
+    langNotifier.value = langNotifier.value == 'hi' ? 'en' : 'hi';
+    SharedPreferences.getInstance()
+        .then((p) => p.setString('lnm_lang', langNotifier.value));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ListView(padding: const EdgeInsets.all(20), children: [
+        Text(t('account'),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 16),
+        if (ApiClient.token == null) ...[
+          // ── LOGIN FORM ───────────────────────────────────────────────
+          TextField(
+            controller: _name,
+            decoration: InputDecoration(labelText: t('name_l'), prefixIcon: const Icon(Icons.person)),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            maxLength: 10,
+            decoration: InputDecoration(
+                labelText: t('phone'),
+                prefixIcon: const Icon(Icons.phone),
+                counterText: '',
+                helperText: t('demo_note')),
+          ),
+          const SizedBox(height: 12),
+          if (_otpStage) ...[
+            TextField(
+              controller: _otp,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                  labelText: t('otp'), prefixIcon: const Icon(Icons.lock)),
+            ),
+            const SizedBox(height: 16),
+          ],
+          FilledButton(
+            onPressed: _busy ? null : (_otpStage ? _verify : _requestOtp),
+            child: _busy
+                ? const SizedBox(
+                    width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                : Text(_otpStage ? t('verify') : t('login')),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _google,
+            icon: const Icon(Icons.account_circle),
+            label: Text(t('google_login')),
+            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+          ),
+        ] else ...[
+          // ── ACCOUNT HUB ──────────────────────────────────────────────
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            child: ListTile(
+              leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFFEF3C7),
+                  child: Icon(Icons.person, color: Color(0xFFB45309))),
+              title: Text(ApiClient.userName ?? t('welcome'),
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text(t('logged_in_as')),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _menuTile(Icons.dashboard, t('dashboard'), () {
+            Navigator.push(
+                context, MaterialPageRoute(builder: (_) => const DashboardScreen()));
+          }),
+          _menuTile(Icons.work, t('register_provider'), () {
+            Navigator.push(
+                context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
+          }),
+          _menuTile(Icons.edit, t('edit_profile'), () {
+            Navigator.push(
+                context, MaterialPageRoute(builder: (_) => const ProfileEditScreen()));
+          }),
+          _menuTile(Icons.language, langNotifier.value == 'hi' ? 'English' : 'हिंदी', _toggleLang),
+          _menuTile(Icons.logout, t('logout'), _logout, color: const Color(0xFFDC2626)),
+        ],
+        const SizedBox(height: 16),
+        // ── Common (login ke bina bhi) — web jaisa ────────────────────────
+        _menuTile(Icons.feedback, t('feedback_l'), () {
+          Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const FeedbackScreen()));
+        }),
+        _menuTile(Icons.info_outline, t('about_us'), () {
+          Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const AboutScreen()));
+        }),
+        _menuTile(Icons.mail_outline, t('contact_us'), () {
+          Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const ContactScreen()));
+        }),
+        _menuTile(Icons.share, t('share_app'), () {
+          Share.share('${t('share_text')} https://labors-near-me.onrender.com');
+        }),
+        const SizedBox(height: 20),
+        Center(
+          child: Text('Labors Near Me · v1.1.0',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+        ),
+      ]),
+    );
+  }
+
+  Widget _menuTile(IconData icon, String label, VoidCallback onTap, {Color? color}) => Card(
+        margin: const EdgeInsets.only(bottom: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: ListTile(
+          leading: Icon(icon, color: color ?? const Color(0xFFF97316)),
+          title: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: color)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: onTap,
+        ),
+      );
+}
+````
+
+## 📄 `mobile/lib/screens/favorites_screen.dart`
+
+````dart
+// favorites_screen.dart — saved providers (requires login).
+import 'package:flutter/material.dart';
+import '../core/api_client.dart';
+import '../core/i18n.dart';
+import '../core/widgets.dart';
+import '../models.dart';
+import 'detail_screen.dart';
+
+class FavoritesBody extends StatefulWidget {
+  const FavoritesBody({super.key});
+  @override
+  State<FavoritesBody> createState() => _FavoritesBodyState();
+}
+
+class _FavoritesBodyState extends State<FavoritesBody> {
+  List<ProviderModel> favs = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (ApiClient.token == null) {
+      if (mounted) setState(() => loading = false);
+      return;
+    }
+    try {
+      final list = await ApiClient.get('/favorites');
+      favs = (list as List)
+          .map((j) => ProviderModel.fromJson(Map<String, dynamic>.from(j as Map)))
+          .toList();
+    } catch (_) {
+      favs = [];
+    }
+    if (mounted) setState(() => loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ApiClient.token == null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(t('login'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Color(0xFF78716C))),
+                  ),
+                )
+              : favs.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(t('no_fav'),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Color(0xFF78716C))),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView(
+                        padding: const EdgeInsets.all(14),
+                        children: [
+                          Text(t('favorites'),
+                              style: const TextStyle(
+                                  fontSize: 20, fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 10),
+                          ...favs.map((p) => Card(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14)),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.all(12),
+                                  leading: monogramAvatar(p.name, p.categoryId),
+                                  title: Text(p.businessName,
+                                      style:
+                                          const TextStyle(fontWeight: FontWeight.w700)),
+                                  subtitle: starsRow(p.ratingAvg, p.ratingCount),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) =>
+                                              DetailScreen(providerId: p.id))),
+                                ),
+                              )),
+                        ],
+                      ),
+                    ),
+    );
+  }
+}
+````
+
+## 📄 `mobile/lib/screens/feedback_screen.dart`
+
+````dart
+// feedback_screen.dart — user feedback (view + submit). Same contract as web #/feedback:
+// POST /api/feedback { name?, contact?, type: user|provider|other, rating 1-5, message 5-1000 }
+import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
+import '../core/api_client.dart';
+import '../core/i18n.dart';
+
+class FeedbackScreen extends StatefulWidget {
+  const FeedbackScreen({super.key});
+  @override
+  State<FeedbackScreen> createState() => _FeedbackScreenState();
+}
+
+class _FeedbackScreenState extends State<FeedbackScreen> {
+  final _name = TextEditingController();
+  final _contact = TextEditingController();
+  final _msg = TextEditingController();
+  String _type = 'user';
+  double _rating = 5;
+  bool _busy = false;
+
+  Future<void> _submit() async {
+    final msg = _msg.text.trim();
+    if (msg.length < 5) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(t('fb_msg'))));
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ApiClient.post('/feedback', {
+        'name': _name.text.trim(),
+        'contact': _contact.text.trim(),
+        'type': _type,
+        'rating': _rating,
+        'message': msg,
+      });
+      if (mounted) {
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('✓'),
+            content: Text(t('feedback_sent')),
+            actions: [
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.pop(context);
+                },
+                child: Text(t('done')),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(t('error_gen'))));
+      }
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _share() async {
+    await Share.share('${t('share_text')} https://labors-near-me.onrender.com');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(t('feedback_title'))),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Text(t('feedback_sub'), style: const TextStyle(color: Color(0xFF57534E))),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _name,
+          decoration: InputDecoration(labelText: t('name_l')),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _contact,
+          decoration: InputDecoration(labelText: '${t('phone')} / Email'),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: _type,
+          decoration: InputDecoration(labelText: t('fb_type')),
+          items: [
+            DropdownMenuItem(value: 'user', child: Text(t('fb_user'))),
+            DropdownMenuItem(value: 'provider', child: Text(t('fb_provider'))),
+            DropdownMenuItem(value: 'other', child: Text(t('fb_other'))),
+          ],
+          onChanged: (v) => setState(() => _type = v ?? 'user'),
+        ),
+        const SizedBox(height: 12),
+        Text('⭐ ${t('fb_rating')}', style: const TextStyle(fontWeight: FontWeight.w600)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(5, (i) => IconButton(
+                onPressed: () => setState(() => _rating = (i + 1).toDouble()),
+                icon: Icon(Icons.star,
+                    color: i < _rating ? const Color(0xFFF59E0B) : const Color(0xFFE7E5E4),
+                    size: 36),
+              )),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _msg,
+          maxLines: 5,
+          decoration: InputDecoration(labelText: '${t('fb_msg')} *'),
+        ),
+        const SizedBox(height: 20),
+        FilledButton(
+          onPressed: _busy ? null : _submit,
+          child: _busy
+              ? const SizedBox(
+                  width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+              : Text(t('submit')),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _share,
+          icon: const Icon(Icons.share),
+          label: Text(t('share_app')),
+          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+        ),
+        const SizedBox(height: 24),
+      ]),
+    );
+  }
+}
+````
+
+## 📄 `mobile/lib/screens/about_screen.dart`
+
+````dart
+// about_screen.dart — About Us (web #/about jaisa).
+import 'package:flutter/material.dart';
+import '../core/i18n.dart';
+import 'contact_screen.dart';
+
+class AboutScreen extends StatelessWidget {
+  const AboutScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isHi = langNotifier.value == 'hi';
+    return Scaffold(
+      appBar: AppBar(title: Text(t('about_us'))),
+      body: ListView(padding: const EdgeInsets.all(20), children: [
+        Text(
+          isHi
+              ? 'Labors Near Me — भारत के हर शहर में काम करने वाले भरोसेमंद लोगों को ढूँढने का आसान तरीका। 🇮🇳'
+              : 'Labors Near Me — Bharat ke har sheher me kaam karne wale bharosemand logon ko dhoondhne ka aasaan tareeka. 🇮🇳',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          isHi
+              ? 'इलेक्ट्रीशियन, प्लंबर, दर्जी, डॉक्टर, ड्राइवर — जो चाहिए, अपने आस-पास GPS से या शहर/राज्य चुनकर। सीधा कॉल, WhatsApp, रास्ता। कोई कमीशन नहीं, कोई बीच का आदमी नहीं।'
+              : 'Electrician, plumber, tailor, doctor, driver — jo chahiye, apne aas-paas GPS se ya city/state chun kar. Seedha call, WhatsApp, directions. Koi commission nahi, koi beech ka aadmi nahi.',
+          style: const TextStyle(color: Color(0xFF57534E), height: 1.6),
+        ),
+        const SizedBox(height: 16),
+        _point('🎯', isHi ? 'हाइपरलोकल खोज — दूरी के हिसाब से' : 'Hyperlocal search — distance ke hisaab se'),
+        _point('✅', isHi ? 'सत्यापित प्रोवाइडर + असली रिव्यू' : 'Verified providers + asli reviews'),
+        _point('📱', isHi ? 'कम डेटा — 2G/3G पर भी तेज़' : 'Low bandwidth — 2G/3G par bhi tez'),
+        _point('🗣️', isHi ? 'हिंदी + अंग्रेज़ी' : 'Hindi + English'),
+        _point('🆓', isHi ? 'प्रोवाइडर के लिए लिस्टिंग बिल्कुल FREE' : 'Providers ke liye listing bilkul FREE'),
+        const SizedBox(height: 20),
+        Text(
+          isHi ? 'वर्जन 1.1 · भारत में ❤️ से बनाया गया' : 'Version 1.1 · Made in India with ❤️',
+          style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+        ),
+        const SizedBox(height: 20),
+        FilledButton(
+          onPressed: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const ContactScreen())),
+          child: Text(t('contact_us')),
+        ),
+        const SizedBox(height: 24),
+      ]),
+    );
+  }
+
+  Widget _point(String emoji, String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(emoji, style: const TextStyle(fontSize: 16)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 15, height: 1.4))),
+        ]),
+      );
+}
+````
+
+## 📄 `mobile/lib/screens/contact_screen.dart`
+
+````dart
+// contact_screen.dart — Contact Us: info + message form.
+// Web jaisa: POST /api/reports { targetType:'user', targetId:'platform', reason:'CONTACT: ...' }
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../core/api_client.dart';
+import '../core/i18n.dart';
+
+class ContactScreen extends StatefulWidget {
+  const ContactScreen({super.key});
+  @override
+  State<ContactScreen> createState() => _ContactScreenState();
+}
+
+class _ContactScreenState extends State<ContactScreen> {
+  final _name = TextEditingController();
+  final _msg = TextEditingController();
+  bool _busy = false;
+
+  Future<void> _send() async {
+    final msg = _msg.text.trim();
+    if (msg.length < 5) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(t('contact_msg'))));
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ApiClient.post('/reports', {
+        'targetType': 'user',
+        'targetId': 'platform',
+        'reason': 'CONTACT: ${_name.text.trim()} — ${msg.substring(0, msg.length > 200 ? 200 : msg.length)}',
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(t('sent_ok'))));
+        _name.clear();
+        _msg.clear();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(t('error_gen'))));
+      }
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _open(String url) async {
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isHi = langNotifier.value == 'hi';
+    return Scaffold(
+      appBar: AppBar(title: Text(t('contact_us'))),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Card(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: Column(children: [
+            ListTile(
+              leading: const Icon(Icons.mail, color: Color(0xFFF97316)),
+              title: const Text('laborsnearme@gmail.com'),
+              subtitle: Text(isHi ? 'ईमेल करें' : 'Email us'),
+              onTap: () => _open('mailto:laborsnearme@gmail.com'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.chat, color: Color(0xFF25D366)),
+              title: const Text('+91 90000 00001'),
+              subtitle: Text(isHi ? 'व्हाट्सएप हेल्पलाइन' : 'WhatsApp helpline'),
+              onTap: () => _open('https://wa.me/919000000001'),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 20),
+        Text(isHi ? 'संदेश भेजें' : 'Send a message',
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _name,
+          decoration: InputDecoration(labelText: t('name_l')),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _msg,
+          maxLines: 5,
+          decoration: InputDecoration(labelText: '${t('contact_msg')} *'),
+        ),
+        const SizedBox(height: 20),
+        FilledButton(
+          onPressed: _busy ? null : _send,
+          child: _busy
+              ? const SizedBox(
+                  width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+              : Text(t('send')),
+        ),
+        const SizedBox(height: 24),
+      ]),
+    );
+  }
+}
+````
+
+## 📄 `mobile/lib/screens/profile_edit_screen.dart`
+
+````dart
+// profile_edit_screen.dart — user profile editor (web Account > My Profile jaisa).
+// GET /auth/me se prefill → PUT /me/profile { name, bio, about, address, state, district, photo }
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import '../core/api_client.dart';
+import '../core/i18n.dart';
+import '../core/widgets.dart';
+
+class ProfileEditScreen extends StatefulWidget {
+  const ProfileEditScreen({super.key});
+  @override
+  State<ProfileEditScreen> createState() => _ProfileEditScreenState();
+}
+
+class _ProfileEditScreenState extends State<ProfileEditScreen> {
+  final _name = TextEditingController();
+  final _bio = TextEditingController();
+  final _about = TextEditingController();
+  final _address = TextEditingController();
+  List<Map<String, dynamic>> states = [];
+  String? stateName;
+  String? districtName;
+  String? photo; // data:image/... or http
+  bool busy = false;
+  bool loading = true;
+
+  List<String> get _districts {
+    for (final s in states) {
+      if (s['state'] == stateName) return List<String>.from(s['districts'] ?? []);
+    }
+    return [];
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final results = await Future.wait([
+        ApiClient.get('/auth/me'),
+        ApiClient.get('/states'),
+      ]);
+      final u = (results[0] as Map)['user'] ?? {};
+      _name.text = (u['name'] ?? '').toString();
+      _bio.text = (u['bio'] ?? '').toString();
+      _about.text = (u['about'] ?? '').toString();
+      _address.text = (u['address'] ?? '').toString();
+      stateName = (u['state'] ?? '').toString().isEmpty ? null : (u['state'] ?? '').toString();
+      districtName =
+          (u['district'] ?? '').toString().isEmpty ? null : (u['district'] ?? '').toString();
+      photo = u['photo'];
+      states = ((results[1] as List)).map((s) => {
+            'state': (s['state'] ?? '').toString(),
+            'districts': s['districts'] ?? [],
+          }).toList();
+    } catch (_) {}
+    if (mounted) setState(() => loading = false);
+  }
+
+  Future<void> _pickPhoto() async {
+    try {
+      final picked =
+          await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 400, imageQuality: 75);
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      setState(() => photo = 'data:image/jpeg;base64,${base64Encode(bytes)}');
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(t('error_gen'))));
+      }
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => busy = true);
+    try {
+      await ApiClient.put('/me/profile', {
+        'name': _name.text.trim(),
+        'bio': _bio.text.trim(),
+        'about': _about.text.trim(),
+        'address': _address.text.trim(),
+        'state': stateName ?? '',
+        'district': districtName ?? '',
+        'photo': photo,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(t('saved_ok'))));
+        Navigator.pop(context);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(t('error_gen'))));
+      }
+    }
+    if (mounted) setState(() => busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(t('my_profile'))),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(padding: const EdgeInsets.all(16), children: [
+              Center(
+                child: Column(children: [
+                  monogramAvatar(_name.text, '', photo: photo, size: 96),
+                  const SizedBox(height: 8),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    TextButton.icon(
+                      onPressed: _pickPhoto,
+                      icon: const Icon(Icons.photo_camera, size: 18),
+                      label: Text(photo == null ? t('add_photo') : t('change_photo')),
+                    ),
+                    if (photo != null)
+                      TextButton.icon(
+                        onPressed: () => setState(() => photo = null),
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        label: Text(t('remove_photo')),
+                        style: TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
+                      ),
+                  ]),
+                ]),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _name,
+                decoration: InputDecoration(labelText: t('name_l')),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _bio,
+                maxLength: 200,
+                decoration: InputDecoration(labelText: t('bio_l'), counterText: ''),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _about,
+                maxLines: 3,
+                maxLength: 500,
+                decoration: InputDecoration(labelText: t('about_me'), counterText: ''),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _address,
+                decoration: InputDecoration(labelText: t('address_opt')),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: stateName,
+                    decoration: InputDecoration(labelText: t('state_l')),
+                    items: [
+                      DropdownMenuItem<String>(value: null, child: Text(t('select_state'))),
+                      ...states.map((s) => DropdownMenuItem<String>(
+                          value: s['state'] as String, child: Text(s['state'] as String))),
+                    ],
+                    onChanged: (v) => setState(() {
+                      stateName = v;
+                      districtName = null;
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: districtName,
+                    decoration: InputDecoration(labelText: t('district_l')),
+                    items: [
+                      DropdownMenuItem<String>(value: null, child: Text(t('select_district'))),
+                      ..._districts.map((d) =>
+                          DropdownMenuItem<String>(value: d, child: Text(d, overflow: TextOverflow.ellipsis))),
+                    ],
+                    onChanged: (v) => setState(() => districtName = v),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: busy ? null : _save,
+                child: busy
+                    ? const SizedBox(
+                        width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(t('save_changes')),
+              ),
+              const SizedBox(height: 24),
+            ]),
     );
   }
 }
@@ -6722,7 +9101,7 @@ artifact download करें, और repo secrets में 4 values डाल
 cd mobile
 flutter pub get
 dart run flutter_launcher_icons      # assets/icon.png → launcher icons
-flutter create . --platforms android --org in.laborsnearme
+flutter create . --platforms android --org com.laborsnearme
 flutter build apk --release --split-per-abi
 flutter build appbundle --release    # Play Store के लिए
 ```
@@ -7516,7 +9895,7 @@ Hindi/English, favorites, reviews, provider registration & dashboard.
 1. पहली बार review में **1-7 दिन** लगते हैं
 2. Google email करेगा — कोई दिक्कत हो तो वो बताएँगे (आम मुद्दे: privacy policy link, screenshots)
 3. Approve होते ही app **Play Store पर LIVE**! 🥳
-4. अपना link share करें: `https://play.google.com/store/apps/details?id=in.laborsnearme.labors_near_me`
+4. अपना link share करें: `https://play.google.com/store/apps/details?id=com.laborsnearme.labors_near_me`
 
 ---
 
@@ -7544,6 +9923,249 @@ Hindi/English, favorites, reviews, provider registration & dashboard.
 ---
 
 कहीं अटकें तो screenshot लेकर पूछें — मैं हर step में मदद करूँगा! 💪
+````
+
+## 📄 `docs/FIREBASE_SETUP_HINDI.md`
+
+````markdown
+# 🔥 Firebase Setup Guide (Hindi) — Real Phone OTP + Google Login
+
+> **Ye kyun?** App me asli OTP SMS aur asli Google login chalu karne ke liye.
+> **Free hai** (monthly free quota bahut zyada hai normal use ke liye).
+> **Time:** ~10 minute. **Koi coding nahi** — sirf copy-paste.
+
+---
+
+## Step 1: Firebase project banao
+
+1. **https://console.firebase.google.com** kholein (apne Google account se)
+2. **"Create a project"** (ya "Add project") click
+3. Naam: **`labors-near-me`** → Continue → Continue → **Create project**
+4. "Your Firebase project is ready" → **Continue**
+
+## Step 2: Authentication ON karo
+
+1. Left menu → **Build → Authentication** → **Get started**
+2. **Sign-in method** tab → **Phone** → Enable → Save ✅
+3. Wapas **Sign-in method** → **Google** → Enable → Project support email select → Save ✅
+
+## Step 3: Web app register karo
+
+1. Project home → **Web icon (</>)** → App nickname: `labors-web` → **Register app**
+2. `firebaseConfig` object dikhega — **4 values copy karo:**
+
+```js
+apiKey: 'AIza...',            // ← ye chahiye
+authDomain: 'labors-....',    // ← ye chahiye
+projectId: 'labors-...',      // ← ye chahiye
+appId: '1:123:web:...',       // ← ye chahiye
+```
+
+3. Inhe paste karo: **`web/js/firebase-config.js`** me (GitHub par file edit karo ya mujhe bhej do)
+
+## Step 4: Android app register karo (Play Store app ke liye)
+
+1. Firebase me → **Add app → Android icon**
+2. Android package name: **`com.laborsnearme.labors_near_me`** ← EXACT ye
+3. App nickname: `labors-android` → **Register app**
+4. `google-services.json` download hoti hai — **ise safe rakho** (mujhe bhej do ya GitHub secret banayenge)
+5. **SHA-1 fingerprint** add karna hoga (Google login ke liye):
+   - Naya GitHub token banakar mujhe do — main Actions se SHA-1 nikal dunga
+   - Ya manually: Play Console → Setup → App integrity → App signing key certificate → SHA-1 copy
+
+## Step 5: Phone auth ke liye domain allow karo
+
+1. **Authentication → Settings → Authorized domains** me add karo:
+   - `labors-near-me.onrender.com`
+   - `localhost`
+
+## Step 6: Done! 🎉
+
+Bas! Ab:
+- **Web**: `firebase-config.js` me values → real Google + real OTP turant chalu
+- **Android**: `google-services.json` + config → main app me laga dunga
+
+---
+
+## ⚠️ Dhyan rakhein
+
+| Baat | Detail |
+|------|--------|
+| **Free quota** | Phone OTP: ~10K/month free (zyadatar apps ke liye kaafi) |
+| **Billing** | Billing tab me koi card DAALNE KI ZAROORAT NAHI (Spark/free plan) |
+| **Safety** | `google-services.json` aur config public repo me NA rakhein — mujhe bhejo, main secure way se lagaunga |
+| **Demo mode** | Jab tak config khaali hai — app demo OTP (123456) se chalta hai, sab kuch kaam karta hai |
+
+---
+
+## Mujhe kya bhejna hai?
+
+1. `firebase-config.js` ki **4 values** (apiKey, authDomain, projectId, appId)
+2. `google-services.json` file
+3. (Optional) SHA-1 — agar khud na nikal pao
+
+**Ye sab mujhe de do — baaki main kar lunga!** 💪
+````
+
+## 📄 `docs/PROJECT_HANDOVER_HINDI.md`
+
+````markdown
+# 📱 Labors Near Me — पूरा Handover Guide (Hindi)
+
+> **ये file क्यों है?** ताकि conversation/agent बदलने पर भी आप (या कोई भी developer)
+> इस app को पूरी तरह समझकर उसमें कुछ भी बदल सके। **ये file और ZIP हमेशा safe रखें।**
+
+---
+
+## 0. 👤 User के बारे में (नया chat/agent ज़रूर पढ़े!)
+
+- **भाषा:** हमेशा **Hindi/Hinglish** में बात करें — सरल, दोस्ताना अंदाज़ में
+- **तकनीकी level:** Non-developer हैं (beginner) — **छोटे-छोटे steps** में समझाएँ, jargon कम से कम, हर command साफ़ लिखें
+- **लैपटॉप नहीं है** — सब कुछ phone से; cloud build (GitHub Actions) से ही APK/AAB बनाएँ, कभी laptop की सलाह न दें
+- **खुद करना चाहते हैं** — instructions दें, हर step पर confirm करें; token/password वो खुद बनाते हैं (जब ज़रूरत हो tabhi maangein)
+- **अब तक कर चुके हैं:** GitHub repo push ✅ Render deploy ✅ Keystore+secrets ✅ Play Store build (AAB) ✅
+- **उनकी जीत celebrate करें** — प्रोत्साहन से काम करते हैं, confidence बढ़ता है 😊
+
+---
+
+## 1. ये App क्या है?
+
+**Labors Near Me** — hyperlocal service-provider discovery app (UrbanClap/JustDial style)।
+मज़दूर/कारीगर/सर्विस प्रोवाइडर ढूँढो अपने आस-पास (GPS या city चुनकर)।
+3 तरह के users: **Service Seeker** (ढूँढने वाला), **Provider** (कारीगर — खुद register), **Admin**।
+
+- ✅ Phone-OTP login (demo OTP: `123456`)
+- ✅ Category search (16 categories), distance-based results, map + list view
+- ✅ Click-to-call, WhatsApp, directions, ratings, favorites
+- ✅ Provider dashboard (profile edit, leads, availability)
+- ✅ Admin panel (categories, verification, analytics)
+- ✅ Bilingual Hindi/English, low-bandwidth इंडिया के लिए बना
+- ✅ **Play Store पर publish हो चुका है / होने वाला है** — App ID: `com.laborsnearme.labors_near_me`
+
+---
+
+## 2. आपके पास क्या-क्या होना चाहिए (Backup Checklist)
+
+| # | चीज़ | कहाँ रखें | किसलिए |
+|---|------|----------|--------|
+| 1 | **labors-near-me.zip** (source code) | Google Drive | पूरा कोड — बिना इसके कुछ नहीं |
+| 2 | **keystore.b64** (zip के अंदर `keystore/` में) | Google Drive + WhatsApp | app update की "चाबी" |
+| 3 | **2 passwords** (KEYSTORE_PASSWORD, KEY_PASSWORD) | लिखकर Drive note में | चाबी के बिना बेकार |
+| 4 | **app-release.aab** | Google Drive | Play Store update file (हर बार नई बनती है) |
+| 5 | **GitHub account** (id + password) | याद / password manager | कोड + automatic build |
+| 6 | **Render account** (id + password) | याद / password manager | backend server (API) |
+| 7 | **Play Console** ($25 वाला Google account) | याद / password manager | app publish/update |
+
+⚠️ **keystore वाला note किसी को न भेजें।** ZIP भी सिर्फ़ भरोसेमंद developer को ही दें।
+
+---
+
+## 3. Update / Bug Fix कैसे होगा? (सबसे ज़रूरी हिस्सा)
+
+**लैपटॉप की ज़रूरत नहीं — सब cloud पर होता है।** Flow हमेशा यही है:
+
+```
+1. बदलाव बताओ        → "ये bug ठीक करो" / "ये feature जोड़ो"
+2. कोड बदलो          → नया chat/developer (ZIP + GitHub token देकर)
+3. GitHub पर push     → code अपलोड
+4. GitHub Actions     → 10 मिनट में AUTOMATIC build (AAB + APK बनते हैं)
+5. Play Console       → new release → नई AAB upload → 1-7 दिन review → LIVE
+   (backend बदला हो तो → Render खुद redeploy कर देता है)
+```
+
+### नया chat/developer को क्या बोलें? (Copy-paste template)
+
+> "मेरे पास **Labors Near Me** app का source ZIP और keystore.b64 है
+> (docs/PROJECT_HANDOVER_HINDI.md अंदर है — पढ़ लो)।
+> GitHub repo: https://github.com/mrhmtcool-cloud/my-first-project
+> ये काम करना है: ______ (bug/feature लिखो)।
+> GitHub Actions से build करके नई AAB दो।"
+
+**बस!** कोई भी developer/agent guide पढ़कर सब समझ जाएगा।
+
+---
+
+## 4. Build कैसे होती है (GitHub Actions — cloud build)
+
+1. https://github.com/mrhmtcool-cloud/my-first-project → **Actions** tab
+2. **"Build Android (APK + AAB)"** → **Run workflow** → Backend API URL:
+   `https://labors-near-me.onrender.com` → Run
+3. 10-15 मिनट बाद नीचे **Artifacts** में:
+   - `app-bundle-play-store` → **app-release.aab** (Play Store upload)
+   - `apk-direct-install` → **APK** (phone में direct install/test)
+
+> Keystore से signing automatic होती है (repo secrets में सेट हैं:
+> `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS=upload`, `KEY_PASSWORD`)।
+> Secrets दिखते नहीं — इसलिए अपना passwords note सँभालकर रखें!
+
+---
+
+## 5. Accounts / Services Map
+
+| Service | क्या करती है | Link |
+|---------|------------|------|
+| **GitHub** | कोड + automatic Android build (Actions) | github.com/mrhmtcool-cloud/my-first-project |
+| **Render** | Backend API server (24×7) | dashboard.render.com → `labors-near-me` |
+| **Play Console** | Android app publish/update | play.google.com/console |
+| **GitHub Pages** (optional) | Privacy policy page | Settings → Pages → /docs |
+
+**Live API:** `https://labors-near-me.onrender.com` (health check: `/api/health`)
+**Free tier note:** Render free server 15 min बेकार रहने पर सो जाता है — पहला request 1 मिनट लेता है। ठीक है MVP के लिए।
+
+---
+
+## 6. Demo / Test Logins (test data — real users अपना OTP डालते हैं)
+
+| Role | Phone | Password/OTP |
+|------|-------|--------------|
+| Admin | 9000000001 | 123456 |
+| User | 9000000002 | 123456 |
+| कोई भी [6-9] शुरू 10-digit | — | OTP 123456 (demo) |
+
+Web app (browser): `https://labors-near-me.onrender.com/` या ZIP में `LaborsNearMe.html` (offline standalone)।
+
+---
+
+## 7. Code Structure (ZIP अंदर)
+
+```
+labors-near-me/
+├── backend/       → Node.js API server (Express) — सारा data logic
+├── web/           → Website + PWA (पूरा frontend)
+├── mobile/        → Flutter Android app (Play Store वाला)
+│   └── store-assets/ → app icon + feature graphic (Play listing में लगते हैं)
+├── docs/          → ये guide, Play Store guide (Hindi), architecture, privacy policy
+├── .github/workflows/ → cloud build automation (Actions)
+└── README.md, DEPLOY_HINDI.md → deploy instructions
+keystore/          → keystore.b64 (update की चाबी — repo में कभी commit न करें!)
+```
+
+**API contract:** `docs/ARCHITECTURE.md` में पूरा backend/frontend/mobile structure + endpoints हैं।
+
+---
+
+## 8. सुरक्षा नियम (याद रखें)
+
+1. **keystore.b64 + passwords** कभी सार्वजनिक न करें (na GitHub, na kisi group me)
+2. GitHub token (PAT) बनाओ → काम के बाद **तुरंत delete** कर दो
+3. ZIP किसी को देनी हो तो सोचकर — अंदर keystore है
+4. Play Console / Render / GitHub के **passwords मज़बूत रखें** (2-step verification ON करें)
+
+---
+
+## 9. अक्सर पूछे सवाल
+
+**Q: बिना लैपटॉप के update होगा?**
+A: हाँ — GitHub Actions cloud पर build करता है। आपको सिर्फ़ Play Console पर AAB डालना है।
+
+**Q: keystore खो गया तो?**
+A: पुराना app update नहीं होगा कभी। नया app (नए नाम/id से) बनाना पड़ेगा। इसलिए backup checklist!
+
+**Q: नया feature चाहिए?**
+A: Section 3 का template copy करके किसी developer/agent को दो — बस।
+
+**Q: पैसे?**
+A: Play Console $25 (एक बार)। Render free tier ₹0। बाकी सब free है।
 ````
 
 ## 📄 `docs/privacy-policy.html`

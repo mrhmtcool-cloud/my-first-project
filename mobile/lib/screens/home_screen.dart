@@ -241,9 +241,13 @@ class _HomeBodyState extends State<HomeBody> {
                               width: 54,
                               height: 54,
                               decoration: BoxDecoration(
-                                  color: catColor(c.id).withOpacity(0.14),
+                                  color: kCatImages.containsKey(c.id)
+                                      ? catColor(c.id)
+                                      : catColor(c.id).withOpacity(0.14),
                                   borderRadius: BorderRadius.circular(14)),
-                              child: Icon(catIcon(c.icon), color: catColor(c.id), size: 28),
+                              alignment: Alignment.center,
+                              child: catIconWidget(c.id, c.icon,
+                                  size: kCatImages.containsKey(c.id) ? 34 : 28),
                             ),
                             const SizedBox(height: 4),
                             Text(locName(c.nameEn, c.nameHi),

@@ -1,4 +1,5 @@
 // widgets.dart — shared UI helpers (avatar, stars, badges, category icons/colours).
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../core/i18n.dart';
 
@@ -19,6 +20,8 @@ const Map<String, Color> kCatColors = {
   'beautician': Color(0xFFDB2777),
   'cook': Color(0xFFEA580C),
   'mali': Color(0xFF16A34A),
+  'medical': Color(0xFFDC2626),
+  'others': Color(0xFF64748B),
 };
 
 IconData catIcon(String icon) {
@@ -39,18 +42,51 @@ IconData catIcon(String icon) {
     case 'comb': return Icons.brush;
     case 'chef': return Icons.restaurant;
     case 'leaf': return Icons.park;
+    case 'medical': return Icons.medical_services;
+    case 'shirt': return Icons.checkroom;
+    case 'toolbox': return Icons.handyman;
     default: return Icons.handyman;
   }
 }
 
 Color catColor(String categoryId) => kCatColors[categoryId] ?? const Color(0xFFF59E0B);
 
+/// User-uploaded category icon images (white artwork — web/icons se copy kiye).
+/// Web jaisa dikhe: colored rounded square + white icon.
+const Map<String, String> kCatImages = {
+  'tailor': 'assets/icons/cat-tailor-white.png',
+  'beautician': 'assets/icons/cat-beautician-white.png',
+  'medical': 'assets/icons/cat-medical-white.png',
+};
+
+Widget catIconWidget(String categoryId, String icon, {double size = 28, Color? color}) {
+  final asset = kCatImages[categoryId];
+  if (asset != null) {
+    return Image.asset(asset, width: size, height: size, fit: BoxFit.contain);
+  }
+  return Icon(catIcon(icon), color: color ?? catColor(categoryId), size: size);
+}
+
+/// data:image/...;base64,... → MemoryImage; http(s) → NetworkImage; else null.
+ImageProvider? dataUrlImage(String? s) {
+  if (s == null || s.isEmpty) return null;
+  if (s.startsWith('data:image')) {
+    try {
+      return MemoryImage(base64Decode(s.split(',').last));
+    } catch (_) {
+      return null;
+    }
+  }
+  return NetworkImage(s);
+}
+
 /// Low-bandwidth monogram avatar (no image download) — same as web.
 Widget monogramAvatar(String name, String categoryId, {String? photo, double size = 56}) {
-  if (photo != null && photo.isNotEmpty && photo.startsWith('http')) {
+  final img = dataUrlImage(photo);
+  if (img != null) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: Image.network(photo, width: size, height: size, fit: BoxFit.cover,
+      child: Image(image: img, width: size, height: size, fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => monogramAvatar(name, categoryId, size: size)),
     );
   }
@@ -74,7 +110,7 @@ Widget monogramAvatar(String name, String categoryId, {String? photo, double siz
 Widget starsRow(double avg, int count, {double fontSize = 12}) {
   final full = avg.round();
   return Row(mainAxisSize: MainAxisSize.min, children: [
-    Text('★' * full + '☆' * (5 - full),
+    Text(List.filled(full.clamp(0, 5), '★').join() + List.filled((5 - full).clamp(0, 5), '☆').join(),
         style: TextStyle(color: const Color(0xFFB45309), fontSize: fontSize + 1)),
     const SizedBox(width: 4),
     Text('${avg.toStringAsFixed(1)}', style: TextStyle(fontWeight: FontWeight.w700, fontSize: fontSize)),

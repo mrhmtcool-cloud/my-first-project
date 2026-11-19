@@ -215,6 +215,13 @@ class _DetailScreenState extends State<DetailScreen> {
           const SizedBox(height: 4),
           Text(w.about, style: const TextStyle(color: Color(0xFF57534E))),
         ],
+        if (w.customService.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Chip(
+            label: Text(w.customService, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            backgroundColor: const Color(0xFFD1FAE5),
+          ),
+        ],
         if (w.skills.isNotEmpty) ...[
           const SizedBox(height: 12),
           Wrap(
@@ -227,6 +234,49 @@ class _DetailScreenState extends State<DetailScreen> {
                     ))
                 .toList(),
           ),
+        ],
+        // 📸 kaam ki photos
+        if (w.gallery.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(t('gallery'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 110,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: w.gallery.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) {
+                final img = dataUrlImage(w.gallery[i]);
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: img == null
+                      ? Container(width: 140, color: const Color(0xFFE7E5E4))
+                      : Image(image: img, width: 140, height: 110, fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              Container(width: 140, color: const Color(0xFFE7E5E4))),
+                );
+              },
+            ),
+          ),
+        ],
+        // 🎥 YouTube videos
+        if (w.videoLinks.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(t('videos'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 8),
+          ...w.videoLinks.map((url) => Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: const Icon(Icons.play_circle_fill, color: Color(0xFFDC2626), size: 36),
+                  title: Text(url, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onTap: () async {
+                    try {
+                      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                    } catch (_) {}
+                  },
+                ),
+              )),
         ],
         const SizedBox(height: 20),
         // reviews
@@ -248,7 +298,7 @@ class _DetailScreenState extends State<DetailScreen> {
                   Expanded(
                       child: Text(r.userName,
                           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
-                  Text('★' * r.rating.round(),
+                  Text(List.filled(r.rating.round().clamp(0, 5), '★').join(),
                       style: const TextStyle(color: Color(0xFFF59E0B), fontSize: 13)),
                 ]),
                 subtitle: Text(r.text),

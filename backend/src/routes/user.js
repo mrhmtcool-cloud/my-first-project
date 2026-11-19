@@ -97,12 +97,16 @@ router.post('/providers/:id/reviews', (req, res) => {
   res.status(201).json({ ok: true, ratingAvg: p.ratingAvg, ratingCount: p.ratingCount });
 });
 
-// POST /api/reports — flag a listing (moderation queue in admin panel)
+// POST /api/reports — flag a listing/user/review (moderation queue in admin panel)
 router.post('/reports', (req, res) => {
   const db = load();
   db.reports.unshift({
-    id: uid('rep'), providerId: String(req.body.providerId || ''),
-    userId: req.user.id, reason: String(req.body.reason || '').slice(0, 300),
+    id: uid('rep'),
+    targetType: ['provider', 'user', 'review'].includes(req.body.targetType) ? req.body.targetType : 'provider',
+    targetId: String(req.body.targetId || req.body.providerId || ''),
+    providerId: String(req.body.providerId || ''),
+    userId: req.user.id,
+    reason: String(req.body.reason || '').slice(0, 300),
     status: 'open', createdAt: new Date().toISOString(),
   });
   save();
@@ -120,6 +124,9 @@ router.post('/providers/register', (req, res) => {
   if (!b.name || !b.phone) return res.status(400).json({ error: 'name_and_phone_required' });
 
   const city = db.cities.find((c) => c.id === b.cityId) || db.cities.find((c) => c.id === 'indore');
+  // 'others' category → provider apni service ka naam khud likhta hai (customService)
+  const customService = cat.customAllowed ? String(b.customService || '').slice(0, 60) : '';
+  if (cat.customAllowed && !customService) return res.status(400).json({ error: 'custom_service_required', hint: 'Apni service ka naam likho (jaise: RO Water Purifier Repair)' });
   const provider = {
     id: uid('prv'),
     userId: req.user.id,
@@ -127,6 +134,7 @@ router.post('/providers/register', (req, res) => {
     businessName: String(b.businessName || b.name).slice(0, 80),
     categoryId: cat.id,
     subcategory: String(b.subcategory || (cat.subcategories[0] || {}).id || ''),
+    customService,
     phone: String(b.phone).replace(/\D/g, '').slice(-10),
     whatsapp: String(b.whatsapp || b.phone).replace(/\D/g, '').slice(-10),
     photo: typeof b.photo === 'string' && b.photo.startsWith('data:image') ? b.photo.slice(0, 400000) : null,
@@ -138,6 +146,7 @@ router.post('/providers/register', (req, res) => {
       area: String(b.area || '').slice(0, 60),
       city: city.name_en, cityId: city.id,
       state: String(b.state || city.state).slice(0, 40),
+      district: String(b.district || '').slice(0, 60),
       pincode: String(b.pincode || '').slice(0, 10),
     },
     location: {
@@ -150,9 +159,12 @@ router.post('/providers/register', (req, res) => {
       offDays: Array.isArray(b.offDays) ? b.offDays.map(Number) : [0],
     },
     verified: 'pending',           // ← admin must approve before it appears in search
+    status: 'active',              // moderation: active | suspended | blocked | deleted
     source: 'self',
     kycStatus: b.kycName ? 'submitted' : 'pending', // MVP stores KYC name only (doc upload = S3 in prod)
     kycName: String(b.kycName || '').slice(0, 80),
+    gallery: [],                   // 📸 kaam ki photos (max 6, data-URL) — neeche fill hote hain
+    videoLinks: [],                // 🎥 YouTube links (max 5) — neeche fill hote hain
     ratingAvg: 0, ratingCount: 0,
     languages: ['hi', 'en'],
     createdAt: new Date().toISOString(),
@@ -164,9 +176,89 @@ router.post('/providers/register', (req, res) => {
       if (url) { provider.photo = url; save(); }
     }).catch(() => {});
   }
+  // 📸🎥 Gallery (work photos) + YouTube videos register ke time bhi aa sakte hain
+  if (Array.isArray(b.gallery)) {
+    provider.gallery = b.gallery
+      .filter((g) => typeof g === 'string' && g.startsWith('data:image'))
+      .slice(0, 6).map((g) => g.slice(0, 300000));
+  }
+  if (Array.isArray(b.videoLinks)) {
+    provider.videoLinks = b.videoLinks.map(parseYoutube).filter(Boolean).slice(0, 5);
+  }
   if (req.user.role === 'user') req.user.role = 'provider';
+  req.user.providerId = provider.id;
   save();
   res.status(201).json({ ok: true, provider: { id: provider.id, verified: provider.verified }, message: 'Verification ke liye bhej diya gaya. Admin approve karte hi listing live hogi.' });
+});
+
+/* ─────────── YouTube link helper (validate + extract video id) ─────────── */
+function parseYoutube(url) {
+  const m = String(url || '').match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{6,20})/);
+  return m ? { url: String(url).slice(0, 200), videoId: m[1] } : null;
+}
+
+/* ───────────────────── USER PROFILE (name, bio, about, address) ────────── */
+// PUT /api/me/profile — service taker/provider dono apna profile edit karein
+router.put('/me/profile', (req, res) => {
+  const b = req.body || {};
+  const u = req.user;
+  if (b.name != null) u.name = String(b.name).slice(0, 60);
+  if (b.bio != null) u.bio = String(b.bio).slice(0, 200);
+  if (b.about != null) u.about = String(b.about).slice(0, 500);
+  if (b.address != null) u.address = String(b.address).slice(0, 200);
+  if (b.state != null) u.state = String(b.state).slice(0, 40);
+  if (b.district != null) u.district = String(b.district).slice(0, 60);
+  if (b.cityId != null && load().cities.find((c) => c.id === b.cityId)) u.cityId = String(b.cityId);
+  if (b.photo === null || (typeof b.photo === 'string' && b.photo.startsWith('data:image'))) {
+    u.photo = b.photo ? b.photo.slice(0, 200000) : null;
+  }
+  save();
+  res.json({ ok: true, user: publicUserLite(u) });
+});
+function publicUserLite(u) {
+  return { id: u.id, phone: u.phone, name: u.name, role: u.role, cityId: u.cityId, state: u.state || '', district: u.district || '', bio: u.bio || '', about: u.about || '', address: u.address || '', photo: u.photo || null };
+}
+
+/* ───────────── PROVIDER GALLERY (work/store photos) + YOUTUBE VIDEOS ───── */
+// POST /api/me/providers/:id/gallery  { photo: dataURL } — photo add (max 6)
+router.post('/me/providers/:id/gallery', (req, res) => {
+  const db = load();
+  const p = db.providers.find((x) => x.id === req.params.id);
+  if (!p) return res.status(404).json({ error: 'provider_not_found' });
+  if (p.userId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const photo = String(req.body.photo || '');
+  if (!photo.startsWith('data:image')) return res.status(400).json({ error: 'invalid_photo' });
+  p.gallery = p.gallery || [];
+  if (p.gallery.length >= 6) return res.status(400).json({ error: 'gallery_full', hint: 'Zyada se zyada 6 photos' });
+  p.gallery.push(photo.slice(0, 300000));
+  save();
+  res.status(201).json({ ok: true, count: p.gallery.length });
+});
+
+// DELETE /api/me/providers/:id/gallery/:idx — photo hatao
+router.delete('/me/providers/:id/gallery/:idx', (req, res) => {
+  const db = load();
+  const p = db.providers.find((x) => x.id === req.params.id);
+  if (!p) return res.status(404).json({ error: 'provider_not_found' });
+  if (p.userId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const idx = Number(req.params.idx);
+  if (p.gallery && idx >= 0 && idx < p.gallery.length) p.gallery.splice(idx, 1);
+  save();
+  res.json({ ok: true, count: (p.gallery || []).length });
+});
+
+// PUT /api/me/providers/:id/videos  { links: [youtube urls] } — max 5
+router.put('/me/providers/:id/videos', (req, res) => {
+  const db = load();
+  const p = db.providers.find((x) => x.id === req.params.id);
+  if (!p) return res.status(404).json({ error: 'provider_not_found' });
+  if (p.userId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const links = Array.isArray(req.body.links) ? req.body.links : [];
+  const parsed = links.map(parseYoutube).filter(Boolean).slice(0, 5);
+  if (links.length && !parsed.length) return res.status(400).json({ error: 'invalid_youtube_links', hint: 'Sahi YouTube link daalo (youtube.com/watch?v=... ya youtu.be/...)' });
+  p.videoLinks = parsed;
+  save();
+  res.json({ ok: true, videoLinks: parsed });
 });
 
 // GET /api/me/providers — provider dashboard: my listings (+ status)
@@ -177,9 +269,13 @@ router.get('/me/providers', (req, res) => {
     const leads = db.leads.filter((l) => l.providerId === p.id);
     return {
       id: p.id, name: p.name, businessName: p.businessName, categoryId: p.categoryId,
-      verified: p.verified, ratingAvg: p.ratingAvg, ratingCount: p.ratingCount,
+      customService: p.customService || '',
+      verified: p.verified, status: p.status || 'active',
+      ratingAvg: p.ratingAvg, ratingCount: p.ratingCount,
       availability: p.availability, isOpenNow: isOpenNow(p.availability),
       leadCount: leads.length,
+      galleryCount: (p.gallery || []).length,
+      videoLinks: p.videoLinks || [],
       phone: p.phone, address: p.address,
     };
   }));
@@ -202,12 +298,16 @@ router.put('/providers/:id', (req, res) => {
   ['name', 'businessName', 'about', 'priceHint', 'phone'].forEach((k) => {
     if (b[k] != null) p[k] = String(b[k]).slice(0, 500);
   });
+  if (b.customService !== undefined) p.customService = String(b.customService || '').slice(0, 60);
   if (b.whatsapp) p.whatsapp = String(b.whatsapp).replace(/\D/g, '').slice(-10);
   if (b.photo === null || (typeof b.photo === 'string' && b.photo.startsWith('data:image'))) p.photo = b.photo ? b.photo.slice(0, 400000) : null;
   if (Array.isArray(b.skills)) p.skills = b.skills.slice(0, 8).map(String);
   if (b.address) p.address.line1 = String(b.address).slice(0, 120);
   if (b.area) p.address.area = String(b.area).slice(0, 60);
+  if (b.state) p.address.state = String(b.state).slice(0, 40);
+  if (b.district !== undefined) p.address.district = String(b.district || '').slice(0, 60);
   if (b.pincode) p.address.pincode = String(b.pincode).slice(0, 10);
+  if (Array.isArray(b.videoLinks)) p.videoLinks = b.videoLinks.map(parseYoutube).filter(Boolean).slice(0, 5);
   if (Number.isFinite(Number(b.lat))) p.location.lat = Number(b.lat);
   if (Number.isFinite(Number(b.lng))) p.location.lng = Number(b.lng);
   if (b.open || b.close) {
@@ -227,6 +327,48 @@ router.post('/providers/:id/availability', (req, res) => {
   p.availability.manualOpen = req.body.open === undefined ? !p.availability.manualOpen : !!req.body.open;
   save();
   res.json({ ok: true, manualOpen: p.availability.manualOpen });
+});
+
+
+/* ────────────────────── AADHAAR VERIFICATION (trust badge) ───────────────── */
+// Verhoeff checksum — asli Aadhaar numbers yahi algorithm (UIDAI) validate karte hain
+const VERH_D = [[0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],[5,9,8,7,6,0,4,3,2,1],[6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],[9,8,7,6,5,4,3,2,1,0]];
+const VERH_P = [[0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],[8,9,1,6,0,4,3,5,2,7],[9,4,5,3,1,2,6,8,7,0],[4,2,8,6,5,7,3,9,0,1],[2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8]];
+function verhoeffValid(num) {
+  let c = 0;
+  const digs = num.split('').map(Number).reverse();
+  for (let i = 0; i < digs.length; i++) c = VERH_D[c][VERH_P[i % 8][digs[i]]];
+  return c === 0;
+}
+const maskAadhaar = (n) => 'XXXX XXXX ' + n.slice(-4);
+
+// 🪪 Apna aadhaar khud dekh sakte ho — kisi aur ka kabhi nahi (public API sirf badge deta hai)
+router.get('/me/aadhaar', (req, res) => {
+  res.json({ aadhaar: req.user.aadhaar || { status: 'none' } });
+});
+
+// Step 1: 12-digit Aadhaar number submit → OTP (demo OTP 123456)
+router.post('/me/aadhaar/start', (req, res) => {
+  if (req.user.role !== 'provider') return res.status(403).json({ error: 'forbidden' });
+  const num = String(req.body.aadhaarNumber || '').replace(/\D/g, '');
+  if (num.length !== 12 || !verhoeffValid(num)) return res.status(400).json({ error: 'invalid_aadhaar' });
+  const db = load();
+  const u = db.users.find((x) => x.id === req.user.id);
+  u.aadhaar = { number: num, masked: maskAadhaar(num), status: 'pending', verifiedAt: null };
+  save(db);
+  res.json({ ok: true, masked: u.aadhaar.masked, message: 'OTP bheja gaya — demo OTP 123456' });
+});
+
+// Step 2: OTP verify → "Aadhaar Verified" badge sabko dikhega (number kisi ko nahi)
+router.post('/me/aadhaar/verify', (req, res) => {
+  const db = load();
+  const u = db.users.find((x) => x.id === req.user.id);
+  if (!u.aadhaar || u.aadhaar.status !== 'pending') return res.status(400).json({ error: 'no_pending' });
+  if (String(req.body.otp || '').trim() !== '123456') return res.status(400).json({ error: 'invalid_otp' });
+  u.aadhaar.status = 'verified';
+  u.aadhaar.verifiedAt = new Date().toISOString();
+  save(db);
+  res.json({ ok: true, masked: u.aadhaar.masked, verifiedAt: u.aadhaar.verifiedAt });
 });
 
 module.exports = router;

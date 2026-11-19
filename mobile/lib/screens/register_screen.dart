@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/i18n.dart';
-import '../core/widgets.dart';
 import '../main.dart';
 import '../models.dart';
 
@@ -25,13 +24,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _skills = TextEditingController();
   final _price = TextEditingController();
   final _kyc = TextEditingController();
+  final _customService = TextEditingController();
 
   List<CategoryModel> cats = [];
   List<CityModel> cities = [];
+  List<Map<String, dynamic>> states = [];
   String? categoryId;
   String? subcategory;
   String? cityId;
+  String? stateName;
+  String? districtName;
   bool busy = false;
+
+  List<String> get _districts {
+    for (final s in states) {
+      if (s['state'] == stateName) return List<String>.from(s['districts'] ?? []);
+    }
+    return [];
+  }
 
   @override
   void initState() {
@@ -45,9 +55,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final results = await Future.wait([
         ApiClient.get('/categories'),
         ApiClient.get('/cities'),
+        ApiClient.get('/states'),
       ]);
       cats = (results[0] as List).map((c) => CategoryModel.fromJson(c)).toList();
       cities = (results[1] as List).map((c) => CityModel.fromJson(c)).toList();
+      states = ((results[2] as List)).map((s) => {
+            'state': (s['state'] ?? '').toString(),
+            'districts': s['districts'] ?? [],
+          }).toList();
     } catch (_) {}
     if (mounted) setState(() {});
   }
@@ -66,9 +81,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
         'businessName': _business.text.trim().isEmpty ? _name.text.trim() : _business.text.trim(),
         'categoryId': categoryId,
         'subcategory': subcategory,
+        'customService': _customService.text.trim(),
         'phone': _phone.text.trim(),
         'whatsapp': _whatsapp.text.trim().isEmpty ? _phone.text.trim() : _whatsapp.text.trim(),
         'cityId': cityId,
+        'state': stateName ?? '',
+        'district': districtName ?? '',
         'area': _area.text.trim(),
         'address': _address.text.trim(),
         'pincode': _pincode.text.trim(),
@@ -155,6 +173,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             const SizedBox(height: 12),
           ],
+          // 'Others' category → provider apni service ka naam khud likhta hai
+          if (cats.where((c) => c.id == categoryId && c.customAllowed).isNotEmpty) ...[
+            TextFormField(
+              controller: _customService,
+              maxLength: 60,
+              decoration: InputDecoration(
+                  labelText: '${t('custom_service')} *',
+                  hintText: t('custom_service_hint'),
+                  counterText: ''),
+              validator: (v) {
+                final isCustom = cats.where((c) => c.id == categoryId && c.customAllowed).isNotEmpty;
+                return (isCustom && (v == null || v.trim().isEmpty)) ? t('custom_service') : null;
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(children: [
             Expanded(
               child: TextFormField(
@@ -186,6 +220,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 .toList(),
             onChanged: (v) => setState(() => cityId = v),
           ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: stateName,
+                decoration: InputDecoration(labelText: t('state_l')),
+                items: [
+                  DropdownMenuItem<String>(value: null, child: Text(t('select_state'))),
+                  ...states.map((s) => DropdownMenuItem<String>(
+                      value: s['state'] as String, child: Text(s['state'] as String))),
+                ],
+                onChanged: (v) => setState(() {
+                  stateName = v;
+                  districtName = null;
+                }),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: districtName,
+                decoration: InputDecoration(labelText: t('district_l')),
+                items: [
+                  DropdownMenuItem<String>(value: null, child: Text(t('select_district'))),
+                  ..._districts.map((d) =>
+                      DropdownMenuItem<String>(value: d, child: Text(d, overflow: TextOverflow.ellipsis))),
+                ],
+                onChanged: (v) => setState(() => districtName = v),
+              ),
+            ),
+          ]),
           const SizedBox(height: 12),
           TextFormField(
             controller: _area,

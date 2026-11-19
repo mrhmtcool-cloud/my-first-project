@@ -38,7 +38,28 @@ const CAT_COLORS = {
   'raj-mistri': '#B45309', 'bhandara-catering': '#DC2626', plumber: '#2563EB', carpenter: '#92400E',
   painter: '#7C3AED', 'safai-karamchari': '#059669', 'ac-fridge-repair': '#0891B2', driver: '#4F46E5',
   'mobile-repair': '#E11D48', beautician: '#DB2777', cook: '#EA580C', mali: '#16A34A',
+  medical: '#DC2626', others: '#64748B',
 };
+
+/* ── Media helpers: low-size photo upload (canvas resize) + YouTube thumbs ── */
+/** File → resized JPEG data-URL (max ~1600px side, q=0.72) — 2-5x chhoti file. */
+async function imgToDataUrl(file, maxPx = 1600, quality = 0.72) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxPx / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale), h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+/** YouTube URL → videoId (backend ke parseYoutube jaisa). */
+function ytVideoId(url) {
+  const m = String(url || '').match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{6,20})/);
+  return m ? m[1] : '';
+}
+function ytThumb(videoId) {
+  return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+}
 
 function avatarSvg(name, categoryId, photo) {
   if (photo) return `<img class="avatar-img" src="${photo}" alt="" loading="lazy">`;
@@ -52,6 +73,12 @@ function stars(avg, count) {
   const full = Math.round(avg || 0);
   const s = '★★★★★'.slice(0, full) + '☆☆☆☆☆'.slice(0, 5 - full);
   return `<span class="stars" title="${avg}">★<b>${(avg || 0).toFixed(1)}</b> <i>(${count || 0} ${t('reviews')})</i></span>`;
+}
+
+/** Category icon: custom image (beautician/tailor/medical) ya fallback SVG. */
+function catIconHtml(iconName, iconImage, cls = 'ic') {
+  if (iconImage) return `<img class="cat-img ${cls}" src="${iconImage}" alt="" loading="lazy">`;
+  return icon(iconName || 'wrench', cls);
 }
 
 function icon(name, cls = 'ic') {

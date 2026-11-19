@@ -16,7 +16,7 @@ const CATEGORIES = [
       { id: 'civil', name_en: 'Civil Engineer', name_hi: 'सिविल इंजीनियर' },
       { id: 'site-supervisor', name_en: 'Site Supervisor', name_hi: 'साइट सुपरवाइजर' },
       { id: 'estimation', name_en: 'Estimation / Drawing', name_hi: 'एस्टीमेट / ड्राइंग' } ] },
-  { id: 'tailor', name_en: 'Tailor', name_hi: 'दर्जी', icon: 'scissors', order: 3, active: true,
+  { id: 'tailor', name_en: 'Tailor', name_hi: 'दर्जी', icon: 'shirt', iconImage: '/icons/cat-tailor-white.png', order: 3, active: true,
     subcategories: [
       { id: 'blouse-suit', name_en: 'Blouse / Suit Stitching', name_hi: 'ब्लाउज / सूट सिलाई' },
       { id: 'alteration', name_en: 'Alteration', name_hi: 'अल्टरेशन' },
@@ -71,7 +71,7 @@ const CATEGORIES = [
       { id: 'screen-battery', name_en: 'Screen / Battery', name_hi: 'स्क्रीन / बैटरी' },
       { id: 'software', name_en: 'Software / Update', name_hi: 'सॉफ्टवेयर / अपडेट' },
       { id: 'accessories', name_en: 'Accessories / Charging', name_hi: 'एक्सेसरीज़ / चार्जिंग' } ] },
-  { id: 'beautician', name_en: 'Beautician at Home', name_hi: 'ब्यूटीशियन (घर पर)', icon: 'comb', order: 14, active: true,
+  { id: 'beautician', name_en: 'Beautician at Home', name_hi: 'ब्यूटीशियन (घर पर)', icon: 'scissors', iconImage: '/icons/cat-beautician-white.png', order: 14, active: true,
     subcategories: [
       { id: 'bridal', name_en: 'Bridal Makeup', name_hi: 'दुल्हन मेकअप' },
       { id: 'salon-home', name_en: 'Salon at Home', name_hi: 'घर पर सैलून' },
@@ -86,6 +86,17 @@ const CATEGORIES = [
       { id: 'garden-care', name_en: 'Garden Care', name_hi: 'बगीचा देखभाल' },
       { id: 'plants', name_en: 'Indoor Plants', name_hi: 'इनडोर प्लांट' },
       { id: 'lawn', name_en: 'Lawn / Tree Trim', name_hi: 'लॉन / पेड़ कटाई' } ] },
+  { id: 'medical', name_en: 'Medical Services', name_hi: 'मेडिकल सर्विसेज़', icon: 'medical', iconImage: '/icons/cat-medical-white.png', order: 17, active: true,
+    subcategories: [
+      { id: 'doctor', name_en: 'Doctor / Clinic', name_hi: 'डॉक्टर / क्लिनिक' },
+      { id: 'nurse', name_en: 'Nurse / Attendant', name_hi: 'नर्स / अटेंडेंट' },
+      { id: 'pharmacy', name_en: 'Medical Store / Pharmacy', name_hi: 'मेडिकल स्टोर / फार्मेसी' },
+      { id: 'lab-test', name_en: 'Lab / X-Ray / Test', name_hi: 'लैब / एक्स-रे / टेस्ट' },
+      { id: 'physio', name_en: 'Physiotherapy', name_hi: 'फिजियोथेरेपी' } ] },
+  { id: 'others', name_en: 'Other Services', name_hi: 'अन्य सेवाएँ', icon: 'toolbox', order: 18, active: true,
+    customAllowed: true, // ← provider apni service ka naam khud likh sakta hai (customService field)
+    subcategories: [
+      { id: 'custom', name_en: 'Custom Service (type your own)', name_hi: 'अपनी सेवा लिखें' } ] },
 ];
 
 const CITIES = [
@@ -99,6 +110,9 @@ const CITIES = [
   { id: 'surat', name_en: 'Surat', name_hi: 'सूरत', state: 'Gujarat', lat: 21.1702, lng: 72.8311 },
   { id: 'ahmedabad', name_en: 'Ahmedabad', name_hi: 'अहमदाबाद', state: 'Gujarat', lat: 23.0225, lng: 72.5714 },
   { id: 'varanasi', name_en: 'Varanasi', name_hi: 'वाराणसी', state: 'Uttar Pradesh', lat: 25.3176, lng: 82.9739 },
+  { id: 'raipur', name_en: 'Raipur', name_hi: 'रायपुर', state: 'Chhattisgarh', lat: 21.2514, lng: 81.6296 },
+  { id: 'bhilai', name_en: 'Bhilai', name_hi: 'भिलाई', state: 'Chhattisgarh', lat: 21.1938, lng: 81.3509 },
+  { id: 'bilaspur', name_en: 'Bilaspur', name_hi: 'बिलासपुर', state: 'Chhattisgarh', lat: 22.0797, lng: 82.1409 },
 ];
 
 /** Compact provider tuple → full record.
@@ -111,11 +125,14 @@ const P = (t) => {
     id: 'prv_' + businessName.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14) + '_' + cityId.slice(0, 3),
     userId: userId || null,
     name, businessName, categoryId, subcategory,
+    customService: '',           // 'others' category me provider apni service ka naam likhta hai
     phone, whatsapp: phone,
     photo: null, // null → UI renders a low-bandwidth SVG monogram avatar
+    gallery: [],                 // kaam ki photos (data-URL, max 6) — provider dashboard se upload
+    videoLinks: [],              // YouTube links [{url, videoId}] — max 5
     about, skills,
     priceHint,
-    address: { line1: area + ', ' + city.name_en, area, city: city.name_en, cityId, state: city.state, pincode },
+    address: { line1: area + ', ' + city.name_en, area, city: city.name_en, cityId, state: city.state, district: '', pincode },
     location: { lat: +(city.lat + dLat).toFixed(6), lng: +(city.lng + dLng).toFixed(6) },
     availability: { manualOpen: true, hours: { open: hours.open, close: hours.close }, offDays: hours.offDays },
     verified,
@@ -249,6 +266,24 @@ function buildProviders() {
     P(['Naresh Solanki', 'Solanki Driver Seva', 'driver', 'taxi', '9826091206', 'ahmedabad', 'Satellite', '380015', -0.005, -0.009, 'Ahmedabad local & outstation taxi. Airport drop ₹500.', ['Taxi', 'Airport', 'Outstation'], '₹700/day', 4.4, 33, 'self', 'verified', 'u_nareshs']),
     P(['Ravi Shankar', 'Shankar Tailor & Boutique', 'tailor', 'boutique', '9826101205', 'varanasi', 'Godowlia', '221001', 0.003, -0.002, 'Banarasi saree blouse, kurta, suit. Ghat area me 25 saal se.', ['Blouse', 'Kurta', 'Banarasi'], '₹200 onwards', 4.6, 41, 'admin', 'verified']),
     P(['Dinesh Prajapati', 'Prajapati Electricals Lanka', 'electrician', 'fan-inverter', '9826101206', 'varanasi', 'Lanka', '221005', -0.006, -0.007, 'Pankha, inverter, cooler, wiring — Lanka BHU area service.', ['Fan', 'Inverter', 'Wiring'], '₹180 visit', 4.3, 24, 'self', 'pending', 'u_dineshp']),
+
+    // ─── CHHATTISGARH — Raipur / Bhilai / Bilaspur ──────────────────────────
+    P(['Ramesh Sahu', 'Sahu Electricals Raipur', 'electrician', 'house-wiring', '9827410001', 'raipur', 'Pandri, Main Road', '492004', 0.006, -0.008, 'Ghar ki wiring, MCB, inverter, fan fitting — 15 saal ka anubhav. Pandri-Shankar Nagar area.', ['House wiring', 'MCB', 'Inverter'], '₹200 visit', 4.6, 52, 'admin', 'verified']),
+    P(['Suresh Chandrakar', 'Chandrakar Raj Mistri Karyalaya', 'raj-mistri', 'brickwork', '9827410002', 'raipur', 'Tatibandh', '492099', -0.012, 0.010, 'Makan, deewar, plaster, tiles — mazdoor team ke saath. Loan construction bhi.', ['Brickwork', 'Plaster', 'Tiles'], '₹450/day per mazdoor', 4.7, 61, 'admin', 'verified']),
+    P(['Anita Yadav', 'Yadav Beauty Parlour (Ghar Par)', 'beautician', 'salon-home', '9827410003', 'raipur', 'Devendra Nagar', '492001', 0.010, 0.005, 'Bridal makeup, facial, mehndi, haircut — ghar par service. Ladies only team.', ['Bridal', 'Facial', 'Mehndi'], '₹300 onwards', 4.8, 74, 'self', 'verified', 'u_anitay']),
+    P(['Mohammad Irfan', 'Irfan AC & Fridge Care', 'ac-fridge-repair', 'ac-repair', '9827410004', 'raipur', 'Byron Bazar', '492001', 0.003, -0.004, 'AC gas filling, service, fridge, washing machine — all brands. Same-day service.', ['AC service', 'Gas filling', 'Fridge'], '₹350 service', 4.4, 39, 'admin', 'verified']),
+    P(['Dr. Sushma Tiwari', 'Tiwari Home Clinic', 'medical', 'doctor', '9827410005', 'raipur', 'Shankar Nagar', '492007', 0.008, 0.012, 'MBBS, MD — general physician. Ghar par consultation, BP-sugar check, home visit available.', ['General physician', 'Home visit', 'BP/Sugar'], '₹400 consultation', 4.9, 88, 'admin', 'verified']),
+    {...P(['Vikas Kosre', 'Kosre RO & Water Care', 'others', 'custom', '9827410006', 'raipur', 'Mowa', '492014', -0.009, -0.011, 'RO water purifier repair, service, AMC. Sabhi brands — Kent, Aquaguard, Pureit.', ['RO repair', 'RO service', 'AMC'], '₹250 visit', 4.5, 33, 'self', 'verified', 'u_vikask']), customService: 'RO Water Purifier Repair'},
+
+    P(['Dilip Banjare', 'Banjare Plumbing Works', 'plumber', 'tap-leak', '9827420001', 'bhilai', 'Sector 6', '490006', 0.005, 0.007, 'Nal, leak, motor, bathroom fitting — Sector 1-12 area. Emergency 30 min me.', ['Leak repair', 'Bathroom fitting', 'Motor'], '₹200 visit', 4.5, 42, 'admin', 'verified']),
+    P(['Kavita Sahu', 'Sahu Tiffin & Rasoi', 'cook', 'tiffin', '9827420002', 'bhilai', 'Sector 10', '490006', 0.002, -0.005, 'Ghar jaisa khana — tiffin service, party cooking. Monthly pack available.', ['Tiffin', 'Home food', 'Party cook'], '₹70/thali', 4.7, 58, 'self', 'verified', 'u_kavitas']),
+    P(['Rajesh Verma', 'Verma Furniture House', 'carpenter', 'furniture', '9827420003', 'bhilai', 'Supela', '490023', -0.010, 0.004, 'Beds, almari, sofa, mandir, modular kitchen — teak & plywood. 10 saal warranty.', ['Furniture', 'Modular kitchen', 'Doors'], 'Quote on visit', 4.6, 47, 'admin', 'verified']),
+    P(['Sunil Nishad', 'Nishad Driver Seva', 'driver', 'personal-driver', '9827420004', 'bhilai', 'Hudco', '490009', 0.008, -0.002, 'Personal driver, outstation Raipur-Bhilai-Nagpur. Night drive OK. 8 saal experience.', ['Personal driver', 'Outstation', 'Airport drop'], '₹600/day', 4.3, 27, 'self', 'verified', 'u_suniln', { open: '00:00', close: '23:59', offDays: [] }]),
+
+    P(['Arun Tigga', 'Tigga Electric Works', 'electrician', 'electrical-repair', '9827430001', 'bilaspur', 'Sarkanda', '495004', 0.007, -0.006, 'Bijali repair, wiring, inverter, cooler — Sarkanda-Gandhi Chowk area. Fast service.', ['Repair', 'Wiring', 'Inverter'], '₹180 visit', 4.4, 31, 'admin', 'verified']),
+    P(['Pradeep Rathi', 'Rathi Tailor & Collection', 'tailor', 'blouse-suit', '9827430002', 'bilaspur', 'Juna Bilaspur', '495001', -0.004, 0.003, 'Blouse, suit, kurti, punjabi coat — ladies & gents tailoring. 24 ghante delivery option.', ['Blouse', 'Suit', 'Coat'], '₹150 onwards', 4.5, 36, 'admin', 'verified']),
+    P(['Ghanashyam Miri', 'Miri Safai Kendra', 'safai-karamchari', 'deep-clean', '9827430003', 'bilaspur', 'Vyapar Vihar', '495001', 0.004, 0.008, 'Ghar, office, tank, nali ki safai. Deep cleaning team — booking advance.', ['Deep cleaning', 'Water tank', 'Office'], '₹1200/day team', 4.2, 18, 'self', 'verified', 'u_ghanashyam']),
+    {...P(['Shivkumar Baghel', 'Baghel Mobile & Electronics', 'mobile-repair', 'screen-battery', '9827430004', 'bilaspur', 'Torwa', '495001', -0.007, -0.009, 'Mobile screen, battery, software — sabhi brands. Accessories bhi available.', ['Screen', 'Battery', 'Software'], '₹300 onwards', 4.4, 29, 'admin', 'verified']), customService: '', gallery: [], videoLinks: []},
   ];
   // ensure stable ids even when business names collide across cities
   const seen = new Map();
@@ -304,6 +339,14 @@ const REVIEWS = [
 
 function buildSeed() {
   const providers = buildProviders();
+  // 🪪 Demo: kuch providers Aadhaar-verified (trust badge demo ke liye)
+  ['painter', 'medical', 'beautician', 'tailor'].forEach((catId) => {
+    const p = providers.find((x) => x.categoryId === catId);
+    if (p) {
+      p.aadhaarVerified = true;
+      p.aadhaar = { masked: 'XXXX XXXX 0124', status: 'verified', verifiedAt: '2026-09-20T10:00:00.000Z' };
+    }
+  });
   const users = [
     { id: 'u_admin', phone: '9000000001', name: 'Platform Admin', role: 'admin', cityId: 'indore', createdAt: '2026-08-01T09:00:00.000Z' },
     { id: 'u_demo', phone: '9000000002', name: 'Amit Sharma', role: 'user', cityId: 'indore', createdAt: '2026-08-10T09:00:00.000Z' },

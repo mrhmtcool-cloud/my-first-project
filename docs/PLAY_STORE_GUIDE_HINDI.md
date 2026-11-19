@@ -184,7 +184,7 @@ Hindi/English, favorites, reviews, provider registration & dashboard.
 1. पहली बार review में **1-7 दिन** लगते हैं
 2. Google email करेगा — कोई दिक्कत हो तो वो बताएँगे (आम मुद्दे: privacy policy link, screenshots)
 3. Approve होते ही app **Play Store पर LIVE**! 🥳
-4. अपना link share करें: `https://play.google.com/store/apps/details?id=in.laborsnearme.labors_near_me`
+4. अपना link share करें: `https://play.google.com/store/apps/details?id=com.laborsnearme.labors_near_me`
 
 ---
 

@@ -1,7 +1,9 @@
 // models.dart — JSON models matching the REST API shapes (backend/src/routes/*).
 class CategoryModel {
-  CategoryModel(this.id, this.nameEn, this.nameHi, this.icon, this.subcategories);
-  final String id, nameEn, nameHi, icon;
+  CategoryModel(this.id, this.nameEn, this.nameHi, this.icon, this.iconImage,
+      this.customAllowed, this.subcategories);
+  final String id, nameEn, nameHi, icon, iconImage;
+  final bool customAllowed;
   final List<Subcategory> subcategories;
 
   factory CategoryModel.fromJson(Map<String, dynamic> j) => CategoryModel(
@@ -9,6 +11,8 @@ class CategoryModel {
         j['name_en'] ?? '',
         j['name_hi'] ?? '',
         j['icon'] ?? 'wrench',
+        j['iconImage'] ?? '',
+        j['customAllowed'] ?? false,
         ((j['subcategories'] ?? []) as List)
             .map((s) => Subcategory(s['id'] ?? '', s['name_en'] ?? '', s['name_hi'] ?? ''))
             .toList(),
@@ -40,15 +44,23 @@ class ProviderModel {
         categoryNameEn = j['categoryNameEn'] ?? '',
         categoryNameHi = j['categoryNameHi'] ?? '',
         categoryIcon = j['categoryIcon'] ?? 'wrench',
+        categoryIconImage = j['categoryIconImage'] ?? '',
+        customService = j['customService'] ?? '',
         phone = j['phone'] ?? '',
         whatsapp = j['whatsapp'] ?? j['phone'] ?? '',
         photo = j['photo'],
         about = j['about'] ?? '',
         skills = List<String>.from(j['skills'] ?? []),
+        gallery = List<String>.from(j['gallery'] ?? []),
+        videoLinks = ((j['videoLinks'] ?? []) as List)
+            .map((v) => v is Map ? (v['url'] ?? '').toString() : v.toString())
+            .toList(),
         priceHint = j['priceHint'] ?? '',
         addressLine = (j['address'] ?? {})['line1'] ?? '',
         area = (j['address'] ?? {})['area'] ?? '',
         cityId = (j['address'] ?? {})['cityId'] ?? '',
+        stateName = (j['address'] ?? {})['state'] ?? '',
+        districtName = (j['address'] ?? {})['district'] ?? '',
         lat = ((j['location'] ?? {})['lat'] ?? 0).toDouble(),
         lng = ((j['location'] ?? {})['lng'] ?? 0).toDouble(),
         isOpenNow = j['isOpenNow'] ?? true,
@@ -59,9 +71,10 @@ class ProviderModel {
         distanceText = j['distanceText'] ?? '';
 
   final String id, name, businessName, categoryId, categoryNameEn, categoryNameHi, categoryIcon;
-  final String phone, whatsapp, about, priceHint, addressLine, area, cityId;
+  final String categoryIconImage, customService;
+  final String phone, whatsapp, about, priceHint, addressLine, area, cityId, stateName, districtName;
   final String? photo;
-  final List<String> skills;
+  final List<String> skills, gallery, videoLinks;
   final double lat, lng, ratingAvg;
   final bool isOpenNow;
   final String verified;
