@@ -48,8 +48,8 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           flutter pub get
+          flutter create . --platforms android --org com.laborsnearme --project-name labors_near_me
           dart run flutter_launcher_icons || true
-          flutter create . --platforms android --org in.laborsnearme --project-name labors_near_me
           python3 scripts/setup_android.py
 
       - name: Build APK (split per ABI — small downloads)
