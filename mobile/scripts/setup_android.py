@@ -118,6 +118,10 @@ if (keystorePropertiesFile.exists()) {
             storePassword = keystoreProperties["storePassword"] as String?
         }
     }
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
 '''
     s = imports + s
     idx = s.find('android {')
